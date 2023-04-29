@@ -7,13 +7,22 @@ pub fn lex(input: []const u8, allocator: std.mem.Allocator) !std.ArrayList(Token
 
 pub const Token = struct {
     kind: TokenKind,
-    input: []const u8,
     range: TextRange,
 };
 
 pub const TokenKind = enum(u8) {
     identifier,
     integer,
+    dot,
+    comma,
+    semicolon,
+    colon,
+    l_paren,
+    r_paren,
+    l_brace,
+    r_brace,
+    l_square,
+    r_square,
 };
 
 pub const TextRange = struct {
@@ -43,38 +52,53 @@ const Lexer = struct {
                 self.cursor += 1;
             }
 
-            if ('0' <= self.current() and self.current() <= '9') {
-                const start = self.cursor;
-                while ('0' <= self.current() and self.current() <= '9')
-                    self.cursor += 1;
-                const end = self.cursor;
-                try self.emit(.integer, start, end);
-                continue;
-            }
+            switch (self.current()) {
+                '.' => try self.singleCharToken(.dot),
+                ',' => try self.singleCharToken(.comma),
+                ';' => try self.singleCharToken(.semicolon),
+                ':' => try self.singleCharToken(.colon),
+                '(' => try self.singleCharToken(.l_paren),
+                ')' => try self.singleCharToken(.r_paren),
+                '{' => try self.singleCharToken(.l_brace),
+                '}' => try self.singleCharToken(.r_brace),
+                '[' => try self.singleCharToken(.l_square),
+                ']' => try self.singleCharToken(.r_square),
 
-            if ('a' <= self.current() and self.current() <= 'z') {
-                const start = self.cursor;
-                while (('a' <= self.current() and self.current() <= 'z') or
-                    ('0' <= self.current() and self.current() <= '9') or
-                    (self.current() == '_'))
-                {
-                    self.cursor += 1;
-                }
-                const end = self.cursor;
-                try self.emit(.identifier, start, end);
-                continue;
-            }
+                '0'...'9' => {
+                    const start = self.cursor;
+                    while ('0' <= self.current() and self.current() <= '9')
+                        self.cursor += 1;
+                    const end = self.cursor;
+                    try self.emit(.integer, start, end);
+                },
 
-            std.os.abort();
+                'a'...'z' => {
+                    const start = self.cursor;
+                    while (('a' <= self.current() and self.current() <= 'z') or
+                        ('0' <= self.current() and self.current() <= '9') or
+                        (self.current() == '_'))
+                    {
+                        self.cursor += 1;
+                    }
+                    const end = self.cursor;
+                    try self.emit(.identifier, start, end);
+                },
+
+                else => std.os.abort(),
+            }
         }
 
         return self.tokens;
     }
 
+    fn singleCharToken(self: *Lexer, kind: TokenKind) !void {
+        try self.emit(kind, self.cursor, self.cursor + 1);
+        self.cursor += 1;
+    }
+
     fn emit(self: *Lexer, kind: TokenKind, start: u32, end: u32) !void {
         const token = .{
             .kind = kind,
-            .input = self.input[start..end],
             .range = .{ .start = start, .end = end },
         };
         try self.tokens.append(token);

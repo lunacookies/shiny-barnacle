@@ -8,6 +8,17 @@ pub fn lex(input: []const u8, allocator: std.mem.Allocator) !std.ArrayList(Token
 pub const Token = struct {
     kind: TokenKind,
     range: TextRange,
+
+    pub fn format(
+        self: Token,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{}@{}", .{ self.kind, self.range });
+    }
 };
 
 pub const TokenKind = enum(u8) {
@@ -23,11 +34,34 @@ pub const TokenKind = enum(u8) {
     r_brace,
     l_square,
     r_square,
+
+    pub fn format(
+        self: TokenKind,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        const name = @tagName(self);
+        try writer.writeAll(name);
+    }
 };
 
 pub const TextRange = struct {
     start: u32,
     end: u32,
+
+    pub fn format(
+        self: TextRange,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{d}..{d}", .{ self.start, self.end });
+    }
 };
 
 const Lexer = struct {

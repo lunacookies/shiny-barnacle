@@ -30,6 +30,8 @@ pub const TokenKind = enum(u8) {
     comma,
     semicolon,
     colon,
+    equals,
+    colonEquals,
     l_paren,
     r_paren,
     l_brace,
@@ -91,16 +93,17 @@ const Lexer = struct {
             }
 
             switch (self.current()) {
-                '.' => try self.singleCharToken(.dot),
-                ',' => try self.singleCharToken(.comma),
-                ';' => try self.singleCharToken(.semicolon),
-                ':' => try self.singleCharToken(.colon),
-                '(' => try self.singleCharToken(.l_paren),
-                ')' => try self.singleCharToken(.r_paren),
-                '{' => try self.singleCharToken(.l_brace),
-                '}' => try self.singleCharToken(.r_brace),
-                '[' => try self.singleCharToken(.l_square),
-                ']' => try self.singleCharToken(.r_square),
+                '.' => try self.oneByteToken(.dot),
+                ',' => try self.oneByteToken(.comma),
+                ';' => try self.oneByteToken(.semicolon),
+                ':' => try self.oneOrTwoByteToken(.colon, '=', .colonEquals),
+                '=' => try self.oneByteToken(.equals),
+                '(' => try self.oneByteToken(.l_paren),
+                ')' => try self.oneByteToken(.r_paren),
+                '{' => try self.oneByteToken(.l_brace),
+                '}' => try self.oneByteToken(.r_brace),
+                '[' => try self.oneByteToken(.l_square),
+                ']' => try self.oneByteToken(.r_square),
 
                 '0'...'9' => {
                     const start = self.cursor;
@@ -129,9 +132,25 @@ const Lexer = struct {
         return self.tokens;
     }
 
-    fn singleCharToken(self: *Lexer, kind: TokenKind) !void {
+    fn oneByteToken(self: *Lexer, kind: TokenKind) !void {
         try self.emit(kind, self.cursor, self.cursor + 1);
         self.cursor += 1;
+    }
+
+    fn oneOrTwoByteToken(
+        self: *Lexer,
+        oneKind: TokenKind,
+        twoByte: u8,
+        twoKind: TokenKind,
+    ) !void {
+        if (self.input[self.cursor + 1] != twoByte) {
+            try self.oneByteToken(oneKind);
+            return;
+        }
+
+        try self.emit(twoKind, self.cursor, self.cursor + 2);
+        self.cursor += 2;
+        return;
     }
 
     fn emit(self: *Lexer, kind: TokenKind, start: u32, end: u32) !void {

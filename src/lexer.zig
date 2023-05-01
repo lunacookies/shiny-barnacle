@@ -22,6 +22,8 @@ pub const Token = struct {
 };
 
 pub const TokenKind = enum(u8) {
+    funcKw,
+
     identifier,
     integer,
     dot,
@@ -131,10 +133,29 @@ const Lexer = struct {
     }
 
     fn emit(self: *Lexer, kind: TokenKind, start: u32, end: u32) !void {
-        const token = .{
+        var token = .{
             .kind = kind,
             .range = .{ .start = start, .end = end },
         };
+
+        if (token.kind != .identifier) {
+            try self.tokens.append(token);
+            return;
+        }
+
+        const KeywordSpec = struct { text: []const u8, kind: TokenKind };
+        const keywords = [_]KeywordSpec{
+            .{ .text = "func", .kind = .funcKw },
+        };
+
+        const tokenText = self.input[token.range.start..token.range.end];
+        for (keywords) |spec| {
+            if (std.mem.eql(u8, tokenText, spec.text)) {
+                token.kind = spec.kind;
+                break;
+            }
+        }
+
         try self.tokens.append(token);
     }
 

@@ -184,8 +184,8 @@ const Parser = struct {
     }
 
     fn parseBlock(self: *Parser, allocator: std.mem.Allocator) !Ast.Statement {
+        self.expect(.l_brace);
         var statements = std.ArrayList(Ast.Statement).init(allocator);
-        self.bump(.l_brace);
         while (!self.atEof() and self.current() != .r_brace) {
             const statement = try self.parseStatement(allocator);
             try statements.append(statement);

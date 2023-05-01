@@ -43,10 +43,43 @@ pub const Ast = struct {
     };
 
     pub const Statement = union(enum) {
-        integer: u32,
+        local_declaration: LocalDeclaration,
+
+        pub const LocalDeclaration = struct {
+            name: []const u8,
+            value: Ast.Expression,
+
+            pub fn format(
+                self: Ast.Statement.LocalDeclaration,
+                comptime fmt: []const u8,
+                options: std.fmt.FormatOptions,
+                writer: anytype,
+            ) !void {
+                _ = fmt;
+                _ = options;
+                try writer.print("{s} := {}", .{ self.name, self.value });
+            }
+        };
 
         pub fn format(
             self: Ast.Statement,
+            comptime fmt: []const u8,
+            options: std.fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
+            _ = fmt;
+            _ = options;
+            switch (self) {
+                .local_declaration => |ld| try writer.print("{}", .{ld}),
+            }
+        }
+    };
+
+    pub const Expression = union(enum) {
+        integer: u32,
+
+        pub fn format(
+            self: Ast.Expression,
             comptime fmt: []const u8,
             options: std.fmt.FormatOptions,
             writer: anytype,
@@ -96,39 +129,59 @@ const Parser = struct {
 
     fn parseItem(self: *Parser, allocator: std.mem.Allocator) !Ast.Item {
         switch (self.current()) {
-            .funcKw => return self.parseFunction(allocator),
+            .func_kw => return self.parseFunction(allocator),
             else => self.emitError("expected item", .{}),
         }
     }
 
     fn parseFunction(self: *Parser, allocator: std.mem.Allocator) !Ast.Item {
-        self.bump(.funcKw);
-        const name = self.expect(.identifier);
+        self.bump(.func_kw);
+        const name = self.expectWithText(.identifier);
         const body = try self.parseStatement(allocator);
 
         return .{ .function = .{ .name = name, .body = body } };
     }
 
     fn parseStatement(self: *Parser, allocator: std.mem.Allocator) !Ast.Statement {
+        switch (self.current()) {
+            .identifier => {
+                if (self.lookahead() == .colon_equals) {
+                    return self.parseLocalDeclaration(allocator);
+                }
+                self.emitError("expected statement", .{});
+            },
+            else => self.emitError("expected statement", .{}),
+        }
+    }
+
+    fn parseLocalDeclaration(self: *Parser, allocator: std.mem.Allocator) !Ast.Statement {
+        const name = self.bumpWithText(.identifier);
+        self.bump(.colon_equals);
+        const value = try self.parseExpression(allocator);
+        return .{ .local_declaration = .{ .name = name, .value = value } };
+    }
+
+    fn parseExpression(self: *Parser, allocator: std.mem.Allocator) !Ast.Expression {
         _ = allocator;
         switch (self.current()) {
             .integer => {
                 self.bump(.integer);
                 return .{ .integer = 92 };
             },
-            else => self.emitError("expected statement", .{}),
+            else => self.emitError("expected expression", .{}),
         }
     }
 
-    fn expect(self: *Parser, kind: lexer.TokenKind) []const u8 {
+    fn expect(self: *Parser, kind: lexer.TokenKind) void {
+        _ = self.expectWithText(kind);
+    }
+
+    fn expectWithText(self: *Parser, kind: lexer.TokenKind) []const u8 {
         if (self.current() != kind) {
             self.emitError("expected {} but found {}", .{ kind, self.current() });
         }
 
-        const range = self.tokens[self.cursor].range;
-        const text = self.input[range.start..range.end];
-        self.bump(kind);
-        return text;
+        return self.bumpWithText(kind);
     }
 
     fn emitError(self: *const Parser, comptime fmt: []const u8, args: anytype) noreturn {
@@ -140,13 +193,25 @@ const Parser = struct {
     }
 
     fn bump(self: *Parser, kind: lexer.TokenKind) void {
+        _ = self.bumpWithText(kind);
+    }
+
+    fn bumpWithText(self: *Parser, kind: lexer.TokenKind) []const u8 {
         std.debug.assert(self.current() == kind);
+        const range = self.tokens[self.cursor].range;
+        const text = self.input[range.start..range.end];
         self.cursor += 1;
+        return text;
     }
 
     fn current(self: *const Parser) lexer.TokenKind {
         if (self.atEof()) return .eof;
         return self.tokens[self.cursor].kind;
+    }
+
+    fn lookahead(self: *const Parser) lexer.TokenKind {
+        if (self.cursor + 1 >= self.tokens.len) return .eof;
+        return self.tokens[self.cursor + 1].kind;
     }
 
     fn atEof(self: *const Parser) bool {

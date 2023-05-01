@@ -22,7 +22,7 @@ pub const Token = struct {
 };
 
 pub const TokenKind = enum(u8) {
-    funcKw,
+    func_kw,
 
     identifier,
     integer,
@@ -31,7 +31,7 @@ pub const TokenKind = enum(u8) {
     semicolon,
     colon,
     equals,
-    colonEquals,
+    colon_equals,
     l_paren,
     r_paren,
     l_brace,
@@ -96,7 +96,7 @@ const Lexer = struct {
                 '.' => try self.oneByteToken(.dot),
                 ',' => try self.oneByteToken(.comma),
                 ';' => try self.oneByteToken(.semicolon),
-                ':' => try self.oneOrTwoByteToken(.colon, '=', .colonEquals),
+                ':' => try self.oneOrTwoByteToken(.colon, '=', .colon_equals),
                 '=' => try self.oneByteToken(.equals),
                 '(' => try self.oneByteToken(.l_paren),
                 ')' => try self.oneByteToken(.r_paren),
@@ -139,16 +139,16 @@ const Lexer = struct {
 
     fn oneOrTwoByteToken(
         self: *Lexer,
-        oneKind: TokenKind,
-        twoByte: u8,
-        twoKind: TokenKind,
+        one_kind: TokenKind,
+        two_byte: u8,
+        two_kind: TokenKind,
     ) !void {
-        if (self.input[self.cursor + 1] != twoByte) {
-            try self.oneByteToken(oneKind);
+        if (self.input[self.cursor + 1] != two_byte) {
+            try self.oneByteToken(one_kind);
             return;
         }
 
-        try self.emit(twoKind, self.cursor, self.cursor + 2);
+        try self.emit(two_kind, self.cursor, self.cursor + 2);
         self.cursor += 2;
         return;
     }
@@ -166,12 +166,12 @@ const Lexer = struct {
 
         const KeywordSpec = struct { text: []const u8, kind: TokenKind };
         const keywords = [_]KeywordSpec{
-            .{ .text = "func", .kind = .funcKw },
+            .{ .text = "func", .kind = .func_kw },
         };
 
-        const tokenText = self.input[token.range.start..token.range.end];
+        const token_text = self.input[token.range.start..token.range.end];
         for (keywords) |spec| {
-            if (std.mem.eql(u8, tokenText, spec.text)) {
+            if (std.mem.eql(u8, token_text, spec.text)) {
                 token.kind = spec.kind;
                 break;
             }

@@ -44,6 +44,7 @@ pub const Ast = struct {
 
     pub const Statement = union(enum) {
         local_declaration: LocalDeclaration,
+        block: Block,
 
         pub const LocalDeclaration = struct {
             name: []const u8,
@@ -61,6 +62,25 @@ pub const Ast = struct {
             }
         };
 
+        pub const Block = struct {
+            statements: std.ArrayList(Ast.Statement),
+
+            pub fn format(
+                self: Ast.Statement.Block,
+                comptime fmt: []const u8,
+                options: std.fmt.FormatOptions,
+                writer: anytype,
+            ) !void {
+                _ = fmt;
+                _ = options;
+                try writer.print("{{\n", .{});
+                for (self.statements.items) |statement| {
+                    try writer.print("\t{}\n", .{statement});
+                }
+                try writer.print("}}", .{});
+            }
+        };
+
         pub fn format(
             self: Ast.Statement,
             comptime fmt: []const u8,
@@ -71,6 +91,7 @@ pub const Ast = struct {
             _ = options;
             switch (self) {
                 .local_declaration => |ld| try writer.print("{}", .{ld}),
+                .block => |block| try writer.print("{}", .{block}),
             }
         }
     };
@@ -137,12 +158,12 @@ const Parser = struct {
     fn parseFunction(self: *Parser, allocator: std.mem.Allocator) !Ast.Item {
         self.bump(.func_kw);
         const name = self.expectWithText(.identifier);
-        const body = try self.parseStatement(allocator);
+        const body = try self.parseBlock(allocator);
 
         return .{ .function = .{ .name = name, .body = body } };
     }
 
-    fn parseStatement(self: *Parser, allocator: std.mem.Allocator) !Ast.Statement {
+    fn parseStatement(self: *Parser, allocator: std.mem.Allocator) std.mem.Allocator.Error!Ast.Statement {
         switch (self.current()) {
             .identifier => {
                 if (self.lookahead() == .colon_equals) {
@@ -150,6 +171,7 @@ const Parser = struct {
                 }
                 self.emitError("expected statement", .{});
             },
+            .l_brace => return self.parseBlock(allocator),
             else => self.emitError("expected statement", .{}),
         }
     }
@@ -159,6 +181,17 @@ const Parser = struct {
         self.bump(.colon_equals);
         const value = try self.parseExpression(allocator);
         return .{ .local_declaration = .{ .name = name, .value = value } };
+    }
+
+    fn parseBlock(self: *Parser, allocator: std.mem.Allocator) !Ast.Statement {
+        var statements = std.ArrayList(Ast.Statement).init(allocator);
+        self.bump(.l_brace);
+        while (!self.atEof() and self.current() != .r_brace) {
+            const statement = try self.parseStatement(allocator);
+            try statements.append(statement);
+        }
+        self.expect(.r_brace);
+        return .{ .block = .{ .statements = statements } };
     }
 
     fn parseExpression(self: *Parser, allocator: std.mem.Allocator) !Ast.Expression {

@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const parser = @import("parser.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -22,6 +23,9 @@ pub fn main() !void {
         for (tokens.items) |token| {
             std.debug.print("{}\n", .{token});
         }
+
+        var ast = try parser.parse(input.items, tokens.items, allocator);
+        std.debug.print("{}\n", .{ast});
     }
 }
 

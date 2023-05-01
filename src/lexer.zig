@@ -37,6 +37,8 @@ pub const TokenKind = enum(u8) {
     l_square,
     r_square,
 
+    eof,
+
     pub fn format(
         self: TokenKind,
         comptime fmt: []const u8,

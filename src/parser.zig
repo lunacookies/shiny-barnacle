@@ -1,10 +1,11 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const Ast = @import("Ast.zig");
+const Allocator = std.mem.Allocator;
 
-pub fn parse(input: []const u8, tokens: []const lexer.Token, allocator: std.mem.Allocator) !Ast {
+pub fn parse(input: []const u8, tokens: []const lexer.Token, a: Allocator) !Ast {
     var parser = Parser.init(input, tokens);
-    return parser.parse(allocator);
+    return parser.parse(a);
 }
 
 const Parser = struct {
@@ -16,65 +17,65 @@ const Parser = struct {
         return .{ .input = input, .tokens = tokens, .cursor = 0 };
     }
 
-    fn parse(self: *Parser, allocator: std.mem.Allocator) !Ast {
-        var items = std.ArrayList(Ast.Item).init(allocator);
+    fn parse(self: *Parser, a: Allocator) !Ast {
+        var items = std.ArrayList(Ast.Item).init(a);
 
         while (!self.atEof()) {
-            const item = try self.parseItem(allocator);
+            const item = try self.parseItem(a);
             try items.append(item);
         }
 
         return .{ .items = items };
     }
 
-    fn parseItem(self: *Parser, allocator: std.mem.Allocator) !Ast.Item {
+    fn parseItem(self: *Parser, a: Allocator) !Ast.Item {
         switch (self.current()) {
-            .func_kw => return self.parseFunction(allocator),
+            .func_kw => return self.parseFunction(a),
             else => self.emitError("expected item", .{}),
         }
     }
 
-    fn parseFunction(self: *Parser, allocator: std.mem.Allocator) !Ast.Item {
+    fn parseFunction(self: *Parser, a: Allocator) !Ast.Item {
         self.bump(.func_kw);
         const name = self.expectWithText(.identifier);
-        const body = try self.parseBlock(allocator);
+        const body = try self.parseBlock(a);
 
         return .{ .function = .{ .name = name, .body = body } };
     }
 
-    fn parseStatement(self: *Parser, allocator: std.mem.Allocator) std.mem.Allocator.Error!Ast.Statement {
+    fn parseStatement(self: *Parser, a: Allocator) Allocator.Error!Ast.Statement {
         switch (self.current()) {
             .identifier => {
                 if (self.lookahead() == .colon_equals) {
-                    return self.parseLocalDeclaration(allocator);
+                    return self.parseLocalDeclaration(a);
                 }
                 self.emitError("expected statement", .{});
             },
-            .l_brace => return self.parseBlock(allocator),
+            .l_brace => return self.parseBlock(a),
             else => self.emitError("expected statement", .{}),
         }
     }
 
-    fn parseLocalDeclaration(self: *Parser, allocator: std.mem.Allocator) !Ast.Statement {
+    fn parseLocalDeclaration(self: *Parser, a: Allocator) !Ast.Statement {
         const name = self.bumpWithText(.identifier);
         self.bump(.colon_equals);
-        const value = try self.parseExpression(allocator);
+        const value = try self.parseExpression(a);
         return .{ .local_declaration = .{ .name = name, .value = value } };
     }
 
-    fn parseBlock(self: *Parser, allocator: std.mem.Allocator) !Ast.Statement {
+    fn parseBlock(self: *Parser, a: Allocator) !Ast.Statement {
         self.expect(.l_brace);
-        var statements = std.ArrayList(Ast.Statement).init(allocator);
+        var statements = std.ArrayList(Ast.Statement).init(a);
         while (!self.atEof() and self.current() != .r_brace) {
-            const statement = try self.parseStatement(allocator);
+            const statement = try self.parseStatement(a);
             try statements.append(statement);
         }
         self.expect(.r_brace);
         return .{ .block = .{ .statements = statements } };
     }
 
-    fn parseExpression(self: *Parser, allocator: std.mem.Allocator) !Ast.Expression {
-        _ = allocator;
+    fn parseExpression(self: *Parser, a: Allocator) !Ast.Expression {
+        _ = a;
         switch (self.current()) {
             .integer => {
                 self.bump(.integer);

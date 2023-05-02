@@ -124,10 +124,13 @@ const Parser = struct {
         switch (self.current()) {
             .integer => {
                 const start = self.inputIndex();
-                self.bump(.integer);
+                const text = self.bumpWithText(.integer);
                 const end = self.inputIndex();
+
+                const i = std.fmt.parseInt(u32, text, 10) catch unreachable;
+
                 return .{
-                    .data = .{ .integer = 92 },
+                    .data = .{ .integer = i },
                     .range = .{ .start = start, .end = end },
                 };
             },

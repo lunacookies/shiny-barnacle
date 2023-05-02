@@ -27,6 +27,8 @@ pub const TokenKind = enum(u8) {
     func_kw,
     let_kw,
     var_kw,
+    and_kw,
+    or_kw,
 
     identifier,
     integer,
@@ -35,7 +37,25 @@ pub const TokenKind = enum(u8) {
     semicolon,
     colon,
     equals,
+    equals_equals,
     colon_equals,
+    plus,
+    hyphen,
+    asterisk,
+    slash,
+    percent,
+    pipe,
+    ampersand,
+    caret,
+    tilde,
+    exclamation,
+    exclamation_equals,
+    less_than,
+    less_than_equals,
+    less_than_less_than,
+    greater_than,
+    greater_than_equals,
+    greater_than_greater_than,
     l_paren,
     r_paren,
     l_brace,
@@ -84,8 +104,47 @@ const Lexer = struct {
                 '.' => try self.oneByteToken(.dot),
                 ',' => try self.oneByteToken(.comma),
                 ';' => try self.oneByteToken(.semicolon),
-                ':' => try self.oneOrTwoByteToken(.colon, '=', .colon_equals),
-                '=' => try self.oneByteToken(.equals),
+                ':' => try self.oneOrTwoByteToken(
+                    .colon,
+                    &[_]ByteAndKind{
+                        .{ .byte = '=', .kind = .colon_equals },
+                    },
+                ),
+                '=' => try self.oneOrTwoByteToken(
+                    .equals,
+                    &[_]ByteAndKind{
+                        .{ .byte = '=', .kind = .equals_equals },
+                    },
+                ),
+                '+' => try self.oneByteToken(.plus),
+                '-' => try self.oneByteToken(.hyphen),
+                '*' => try self.oneByteToken(.asterisk),
+                '/' => try self.oneByteToken(.slash),
+                '%' => try self.oneByteToken(.percent),
+                '|' => try self.oneByteToken(.pipe),
+                '&' => try self.oneByteToken(.ampersand),
+                '^' => try self.oneByteToken(.caret),
+                '~' => try self.oneByteToken(.tilde),
+                '!' => try self.oneOrTwoByteToken(
+                    .exclamation,
+                    &[_]ByteAndKind{
+                        .{ .byte = '=', .kind = .exclamation_equals },
+                    },
+                ),
+                '<' => try self.oneOrTwoByteToken(
+                    .less_than,
+                    &[_]ByteAndKind{
+                        .{ .byte = '=', .kind = .less_than_equals },
+                        .{ .byte = '<', .kind = .less_than_less_than },
+                    },
+                ),
+                '>' => try self.oneOrTwoByteToken(
+                    .greater_than,
+                    &[_]ByteAndKind{
+                        .{ .byte = '=', .kind = .greater_than_equals },
+                        .{ .byte = '>', .kind = .greater_than_greater_than },
+                    },
+                ),
                 '(' => try self.oneByteToken(.l_paren),
                 ')' => try self.oneByteToken(.r_paren),
                 '{' => try self.oneByteToken(.l_brace),
@@ -125,20 +184,22 @@ const Lexer = struct {
         self.cursor += 1;
     }
 
+    const ByteAndKind = struct { byte: u8, kind: TokenKind };
+
     fn oneOrTwoByteToken(
         self: *Lexer,
         one_kind: TokenKind,
-        two_byte: u8,
-        two_kind: TokenKind,
+        two_byte_and_kinds: []const ByteAndKind,
     ) !void {
-        if (self.input[self.cursor + 1] != two_byte) {
-            try self.oneByteToken(one_kind);
-            return;
+        for (two_byte_and_kinds) |byte_and_kind| {
+            if (self.input[self.cursor + 1] == byte_and_kind.byte) {
+                try self.emit(byte_and_kind.kind, self.cursor, self.cursor + 2);
+                self.cursor += 2;
+                return;
+            }
         }
 
-        try self.emit(two_kind, self.cursor, self.cursor + 2);
-        self.cursor += 2;
-        return;
+        try self.oneByteToken(one_kind);
     }
 
     fn emit(self: *Lexer, kind: TokenKind, start: u32, end: u32) !void {
@@ -157,6 +218,8 @@ const Lexer = struct {
             .{ .text = "func", .kind = .func_kw },
             .{ .text = "let", .kind = .let_kw },
             .{ .text = "var", .kind = .var_kw },
+            .{ .text = "and", .kind = .and_kw },
+            .{ .text = "or", .kind = .or_kw },
         };
 
         const token_text = self.input[token.range.start..token.range.end];

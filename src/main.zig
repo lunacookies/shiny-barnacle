@@ -1,6 +1,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
+const indexer = @import("indexer.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -26,6 +27,9 @@ pub fn main() !void {
 
         var ast = try parser.parse(input.items, tokens.items, allocator);
         std.debug.print("{}\n", .{ast});
+
+        var file_index = try indexer.indexFile(input.items, ast, allocator);
+        std.debug.print("{}\n", .{file_index});
     }
 }
 

@@ -22,15 +22,16 @@ pub fn main() !void {
         var tokens = try lexer.lex(input.items, allocator);
         defer tokens.deinit();
 
+        std.debug.print("\n== TOKENS ==\n\n", .{});
         for (tokens.items) |token| {
             std.debug.print("{}\n", .{token});
         }
 
         var ast = try parser.parse(input.items, tokens.items, allocator);
-        std.debug.print("{}\n", .{ast});
+        std.debug.print("\n== AST ==\n\n{}\n", .{ast});
 
         var file_index = try indexer.indexFile(input.items, ast, allocator);
-        std.debug.print("{}\n", .{file_index});
+        std.debug.print("\n== INDEX ==\n\n{}\n", .{file_index});
 
         var lir = try Lir.analyze(
             input.items,
@@ -38,7 +39,7 @@ pub fn main() !void {
             ast,
             allocator,
         );
-        std.debug.print("{}\n", .{lir});
+        std.debug.print("\n== LIR ==\n\n{}\n", .{lir});
     }
 }
 

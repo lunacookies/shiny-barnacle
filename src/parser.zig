@@ -154,10 +154,7 @@ const Parser = struct {
     fn emitError(self: *const Parser, comptime fmt: []const u8, args: anytype) noreturn {
         const line_col = utils.indexToLineCol(self.input, self.inputIndex());
 
-        std.debug.print(
-            "{}:{}: error: ",
-            .{ line_col.line + 1, line_col.column + 1 },
-        );
+        std.debug.print("{}: error: ", .{line_col});
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
         std.os.exit(92);

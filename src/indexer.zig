@@ -25,12 +25,8 @@ pub fn indexFile(
             const line_col = utils.indexToLineCol(input, ast_item.range.start);
 
             std.debug.print(
-                "{}:{}: error: an item called “{s}” has already been defined\n",
-                .{
-                    line_col.line + 1,
-                    line_col.column + 1,
-                    ast_item.name,
-                },
+                "{}: error: an item called “{s}” has already been defined\n",
+                .{ line_col, ast_item.name },
             );
             std.os.exit(92);
         }

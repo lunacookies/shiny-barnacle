@@ -172,12 +172,7 @@ const Lexer = struct {
 
     fn emitError(self: *const Lexer) noreturn {
         const line_col = utils.indexToLineCol(self.input, self.cursor);
-
-        std.debug.print(
-            "{}:{}: error: invalid token\n",
-            .{ line_col.line + 1, line_col.column + 1 },
-        );
-
+        std.debug.print("{}: error: invalid token\n", .{line_col});
         std.os.exit(92);
     }
 

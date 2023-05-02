@@ -218,8 +218,29 @@ const Parser = struct {
     }
 
     fn emitError(self: *const Parser, comptime fmt: []const u8, args: anytype) noreturn {
-        _ = self;
-        std.debug.print("error: ", .{});
+        var line: u32 = 0;
+        var column: u32 = 0;
+        var cursor_idx = if (self.atEof())
+            self.tokens[self.tokens.len - 1].range.end
+        else
+            self.tokens[self.cursor].range.start;
+
+        for (self.input, 0..) |c, i| {
+            if (i == cursor_idx) break;
+
+            if (c == '\n') {
+                line += 1;
+                column = 0;
+                continue;
+            }
+
+            column += 1;
+        }
+
+        std.debug.print(
+            "{}:{}: error: ",
+            .{ line + 1, column + 1 },
+        );
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
         std.os.abort();

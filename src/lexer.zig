@@ -125,7 +125,7 @@ const Lexer = struct {
                     try self.emit(.identifier, start, end);
                 },
 
-                else => std.os.abort(),
+                else => self.emitError(),
             }
         }
 
@@ -178,6 +178,29 @@ const Lexer = struct {
         }
 
         try self.tokens.append(token);
+    }
+
+    fn emitError(self: *const Lexer) noreturn {
+        var line: u32 = 0;
+        var column: u32 = 0;
+
+        for (self.input, 0..) |c, i| {
+            if (i == self.cursor) break;
+
+            if (c == '\n') {
+                line += 1;
+                column = 0;
+                continue;
+            }
+
+            column += 1;
+        }
+
+        std.debug.print(
+            "{}:{}: error: invalid token\n",
+            .{ line + 1, column + 1 },
+        );
+        std.os.abort();
     }
 
     fn current(self: *const Lexer) u8 {

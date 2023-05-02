@@ -41,7 +41,7 @@ pub fn indexFile(
     return .{ .items = items };
 }
 
-const FileIndex = struct {
+pub const FileIndex = struct {
     items: std.StringHashMap(Item),
 
     pub fn format(

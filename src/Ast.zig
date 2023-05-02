@@ -1,22 +1,35 @@
 const std = @import("std");
+const TextRange = @import("TextRange.zig");
+
 const Ast = @This();
 
 items: std.ArrayList(Ast.Item),
 
-pub const Item = union(enum) {
-    function: Function,
+pub const Item = struct {
+    name: []const u8,
+    data: Data,
+    range: TextRange,
 
-    pub const Function = struct {
-        name: []const u8,
-        body: Ast.Statement,
+    pub const Data = union(enum) {
+        function: Function,
     };
+
+    pub const Function = struct { body: Ast.Statement };
 };
 
-pub const Type = struct { name: []const u8 };
+pub const Type = struct {
+    name: []const u8,
+    range: TextRange,
+};
 
-pub const Statement = union(enum) {
-    local_declaration: LocalDeclaration,
-    block: Block,
+pub const Statement = struct {
+    data: Data,
+    range: TextRange,
+
+    pub const Data = union(enum) {
+        local_declaration: LocalDeclaration,
+        block: Block,
+    };
 
     pub const LocalDeclaration = struct {
         name: []const u8,
@@ -29,8 +42,13 @@ pub const Statement = union(enum) {
     };
 };
 
-pub const Expression = union(enum) {
-    integer: u32,
+pub const Expression = struct {
+    data: Data,
+    range: TextRange,
+
+    pub const Data = union(enum) {
+        integer: u32,
+    };
 };
 
 pub fn format(
@@ -65,13 +83,17 @@ const PrettyPrintContext = struct {
     }
 
     fn printItem(self: *PrettyPrintContext, item: Ast.Item) Error!void {
-        try switch (item) {
-            .function => |function| self.printFunction(function),
+        try switch (item.data) {
+            .function => |function| self.printFunction(item.name, function),
         };
     }
 
-    fn printFunction(self: *PrettyPrintContext, function: Ast.Item.Function) Error!void {
-        try self.writer.print("func {s} ", .{function.name});
+    fn printFunction(
+        self: *PrettyPrintContext,
+        name: []const u8,
+        function: Ast.Item.Function,
+    ) Error!void {
+        try self.writer.print("func {s} ", .{name});
         try self.printStatement(function.body);
     }
 
@@ -80,7 +102,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printStatement(self: *PrettyPrintContext, statement: Ast.Statement) Error!void {
-        try switch (statement) {
+        try switch (statement.data) {
             .local_declaration => |ld| self.printLocalDeclaration(ld),
             .block => |block| self.printBlock(block),
         };
@@ -114,7 +136,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printExpression(self: *PrettyPrintContext, expression: Ast.Expression) Error!void {
-        try switch (expression) {
+        try switch (expression.data) {
             .integer => |integer| self.printInteger(integer),
         };
     }

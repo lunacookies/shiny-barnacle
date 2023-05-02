@@ -37,23 +37,33 @@ const Parser = struct {
     }
 
     fn parseFunction(self: *Parser, a: Allocator) !Ast.Item {
+        const start = self.inputIndex();
+
         self.bump(.func_kw);
         const name = self.expectWithText(.identifier);
         const body = try self.parseBlock(a);
 
+        const end = self.inputIndex();
+
         return .{
-            .function = .{
-                .name = name,
-                .body = body,
+            .name = name,
+            .data = .{
+                .function = .{ .body = body },
             },
+            .range = .{ .start = start, .end = end },
         };
     }
 
     fn parseType(self: *Parser) Ast.Type {
         switch (self.current()) {
             .identifier => {
+                const start = self.inputIndex();
                 const name = self.expectWithText(.identifier);
-                return .{ .name = name };
+                const end = self.inputIndex();
+                return .{
+                    .name = name,
+                    .range = .{ .start = start, .end = end },
+                };
             },
             else => self.emitError("expected type", .{}),
         }
@@ -68,22 +78,31 @@ const Parser = struct {
     }
 
     fn parseLocalDeclaration(self: *Parser, a: Allocator) !Ast.Statement {
+        const start = self.inputIndex();
+
         self.bump(.let_kw);
         const name = self.bumpWithText(.identifier);
         const ty = self.parseType();
         self.bump(.equals);
         const value = try self.parseExpression(a);
 
+        const end = self.inputIndex();
+
         return .{
-            .local_declaration = .{
-                .name = name,
-                .ty = ty,
-                .value = value,
+            .data = .{
+                .local_declaration = .{
+                    .name = name,
+                    .ty = ty,
+                    .value = value,
+                },
             },
+            .range = .{ .start = start, .end = end },
         };
     }
 
     fn parseBlock(self: *Parser, a: Allocator) !Ast.Statement {
+        const start = self.inputIndex();
+
         self.expect(.l_brace);
         var statements = std.ArrayList(Ast.Statement).init(a);
         while (!self.atEof() and self.current() != .r_brace) {
@@ -91,16 +110,28 @@ const Parser = struct {
             try statements.append(statement);
         }
         self.expect(.r_brace);
-        return .{ .block = .{ .statements = statements } };
+
+        const end = self.inputIndex();
+
+        return .{
+            .data = .{ .block = .{ .statements = statements } },
+            .range = .{ .start = start, .end = end },
+        };
     }
 
     fn parseExpression(self: *Parser, a: Allocator) !Ast.Expression {
         _ = a;
         switch (self.current()) {
             .integer => {
+                const start = self.inputIndex();
                 self.bump(.integer);
-                return .{ .integer = 92 };
+                const end = self.inputIndex();
+                return .{
+                    .data = .{ .integer = 92 },
+                    .range = .{ .start = start, .end = end },
+                };
             },
+
             else => self.emitError("expected expression", .{}),
         }
     }
@@ -118,12 +149,7 @@ const Parser = struct {
     }
 
     fn emitError(self: *const Parser, comptime fmt: []const u8, args: anytype) noreturn {
-        const index = if (self.atEof())
-            self.tokens[self.tokens.len - 1].range.end
-        else
-            self.tokens[self.cursor].range.start;
-
-        const line_col = utils.indexToLineCol(self.input, index);
+        const line_col = utils.indexToLineCol(self.input, self.inputIndex());
 
         std.debug.print(
             "{}:{}: error: ",
@@ -132,6 +158,14 @@ const Parser = struct {
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
         std.os.exit(92);
+    }
+
+    fn inputIndex(self: *const Parser) u32 {
+        if (self.atEof()) {
+            return self.tokens[self.tokens.len - 1].range.end;
+        } else {
+            return self.tokens[self.cursor].range.start;
+        }
     }
 
     fn bump(self: *Parser, kind: lexer.TokenKind) void {

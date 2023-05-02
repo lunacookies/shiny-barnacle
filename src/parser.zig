@@ -40,27 +40,46 @@ const Parser = struct {
         const name = self.expectWithText(.identifier);
         const body = try self.parseBlock(a);
 
-        return .{ .function = .{ .name = name, .body = body } };
+        return .{
+            .function = .{
+                .name = name,
+                .body = body,
+            },
+        };
+    }
+
+    fn parseType(self: *Parser) Ast.Type {
+        switch (self.current()) {
+            .identifier => {
+                const name = self.expectWithText(.identifier);
+                return .{ .name = name };
+            },
+            else => self.emitError("expected type", .{}),
+        }
     }
 
     fn parseStatement(self: *Parser, a: Allocator) Allocator.Error!Ast.Statement {
         switch (self.current()) {
-            .identifier => {
-                if (self.lookahead() == .colon_equals) {
-                    return self.parseLocalDeclaration(a);
-                }
-                self.emitError("expected statement", .{});
-            },
+            .let_kw => return self.parseLocalDeclaration(a),
             .l_brace => return self.parseBlock(a),
             else => self.emitError("expected statement", .{}),
         }
     }
 
     fn parseLocalDeclaration(self: *Parser, a: Allocator) !Ast.Statement {
+        self.bump(.let_kw);
         const name = self.bumpWithText(.identifier);
-        self.bump(.colon_equals);
+        const ty = self.parseType();
+        self.bump(.equals);
         const value = try self.parseExpression(a);
-        return .{ .local_declaration = .{ .name = name, .value = value } };
+
+        return .{
+            .local_declaration = .{
+                .name = name,
+                .ty = ty,
+                .value = value,
+            },
+        };
     }
 
     fn parseBlock(self: *Parser, a: Allocator) !Ast.Statement {

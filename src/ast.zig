@@ -12,12 +12,15 @@ pub const Item = union(enum) {
     };
 };
 
+pub const Type = struct { name: []const u8 };
+
 pub const Statement = union(enum) {
     local_declaration: LocalDeclaration,
     block: Block,
 
     pub const LocalDeclaration = struct {
         name: []const u8,
+        ty: Ast.Type,
         value: Ast.Expression,
     };
 
@@ -72,6 +75,10 @@ const PrettyPrintContext = struct {
         try self.printStatement(function.body);
     }
 
+    fn printType(self: *PrettyPrintContext, ty: Ast.Type) Error!void {
+        try self.writer.writeAll(ty.name);
+    }
+
     fn printStatement(self: *PrettyPrintContext, statement: Ast.Statement) Error!void {
         try switch (statement) {
             .local_declaration => |ld| self.printLocalDeclaration(ld),
@@ -83,7 +90,9 @@ const PrettyPrintContext = struct {
         self: *PrettyPrintContext,
         local_declaration: Ast.Statement.LocalDeclaration,
     ) Error!void {
-        try self.writer.print("{s} := ", .{local_declaration.name});
+        try self.writer.print("let {s} ", .{local_declaration.name});
+        try self.printType(local_declaration.ty);
+        try self.writer.writeAll(" = ");
         try self.printExpression(local_declaration.value);
     }
 

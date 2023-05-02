@@ -1,4 +1,5 @@
 const std = @import("std");
+const TextRange = @import("TextRange.zig");
 
 pub fn lex(input: []const u8, allocator: std.mem.Allocator) !std.ArrayList(Token) {
     var lexer = Lexer.init(input, allocator);
@@ -53,22 +54,6 @@ pub const TokenKind = enum(u8) {
         _ = options;
         const name = @tagName(self);
         try writer.writeAll(name);
-    }
-};
-
-pub const TextRange = struct {
-    start: u32,
-    end: u32,
-
-    pub fn format(
-        self: TextRange,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("{d}..{d}", .{ self.start, self.end });
     }
 };
 

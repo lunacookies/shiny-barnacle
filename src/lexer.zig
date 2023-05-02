@@ -204,7 +204,7 @@ const Lexer = struct {
             "{}:{}: error: invalid token\n",
             .{ line + 1, column + 1 },
         );
-        std.os.abort();
+        std.os.exit(92);
     }
 
     fn current(self: *const Lexer) u8 {

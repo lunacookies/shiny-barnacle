@@ -123,7 +123,7 @@ const Parser = struct {
         );
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
-        std.os.abort();
+        std.os.exit(92);
     }
 
     fn bump(self: *Parser, kind: lexer.TokenKind) void {

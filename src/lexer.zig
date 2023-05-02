@@ -63,6 +63,12 @@ const Lexer = struct {
     input: []const u8,
     cursor: u32,
 
+    const keywords = std.ComptimeStringMap(TokenKind, .{
+        .{ "func", .func_kw },
+        .{ "let", .let_kw },
+        .{ "var", .var_kw },
+    });
+
     fn init(input: []const u8, allocator: std.mem.Allocator) Lexer {
         return .{
             .tokens = std.ArrayList(Token).init(allocator),
@@ -152,20 +158,8 @@ const Lexer = struct {
             return;
         }
 
-        const KeywordSpec = struct { text: []const u8, kind: TokenKind };
-        const keywords = [_]KeywordSpec{
-            .{ .text = "func", .kind = .func_kw },
-            .{ .text = "let", .kind = .let_kw },
-            .{ .text = "var", .kind = .var_kw },
-        };
-
         const token_text = self.input[token.range.start..token.range.end];
-        for (keywords) |spec| {
-            if (std.mem.eql(u8, token_text, spec.text)) {
-                token.kind = spec.kind;
-                break;
-            }
-        }
+        token.kind = keywords.get(token_text);
 
         try self.tokens.append(token);
     }

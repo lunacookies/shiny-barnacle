@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const indexer = @import("indexer.zig");
+const Lir = @import("Lir.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -30,6 +31,14 @@ pub fn main() !void {
 
         var file_index = try indexer.indexFile(input.items, ast, allocator);
         std.debug.print("{}\n", .{file_index});
+
+        var lir = try Lir.analyze(
+            input.items,
+            file_index,
+            ast,
+            allocator,
+        );
+        std.debug.print("{}\n", .{lir});
     }
 }
 

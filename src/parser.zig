@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const utils = @import("utils.zig");
 const Ast = @import("Ast.zig");
 const Allocator = std.mem.Allocator;
 
@@ -117,28 +118,16 @@ const Parser = struct {
     }
 
     fn emitError(self: *const Parser, comptime fmt: []const u8, args: anytype) noreturn {
-        var line: u32 = 0;
-        var column: u32 = 0;
-        var cursor_idx = if (self.atEof())
+        const index = if (self.atEof())
             self.tokens[self.tokens.len - 1].range.end
         else
             self.tokens[self.cursor].range.start;
 
-        for (self.input, 0..) |c, i| {
-            if (i == cursor_idx) break;
-
-            if (c == '\n') {
-                line += 1;
-                column = 0;
-                continue;
-            }
-
-            column += 1;
-        }
+        const line_col = utils.indexToLineCol(self.input, index);
 
         std.debug.print(
             "{}:{}: error: ",
-            .{ line + 1, column + 1 },
+            .{ line_col.line + 1, line_col.column + 1 },
         );
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});

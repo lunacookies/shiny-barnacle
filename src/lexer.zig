@@ -1,4 +1,5 @@
 const std = @import("std");
+const utils = @import("utils.zig");
 const TextRange = @import("TextRange.zig");
 
 pub fn lex(input: []const u8, allocator: std.mem.Allocator) !std.ArrayList(Token) {
@@ -170,25 +171,13 @@ const Lexer = struct {
     }
 
     fn emitError(self: *const Lexer) noreturn {
-        var line: u32 = 0;
-        var column: u32 = 0;
-
-        for (self.input, 0..) |c, i| {
-            if (i == self.cursor) break;
-
-            if (c == '\n') {
-                line += 1;
-                column = 0;
-                continue;
-            }
-
-            column += 1;
-        }
+        const line_col = utils.indexToLineCol(self.input, self.cursor);
 
         std.debug.print(
             "{}:{}: error: invalid token\n",
-            .{ line + 1, column + 1 },
+            .{ line_col.line + 1, line_col.column + 1 },
         );
+
         std.os.exit(92);
     }
 

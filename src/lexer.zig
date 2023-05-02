@@ -23,6 +23,8 @@ pub const Token = struct {
 
 pub const TokenKind = enum(u8) {
     func_kw,
+    let_kw,
+    var_kw,
 
     identifier,
     integer,
@@ -167,6 +169,8 @@ const Lexer = struct {
         const KeywordSpec = struct { text: []const u8, kind: TokenKind };
         const keywords = [_]KeywordSpec{
             .{ .text = "func", .kind = .func_kw },
+            .{ .text = "let", .kind = .let_kw },
+            .{ .text = "var", .kind = .var_kw },
         };
 
         const token_text = self.input[token.range.start..token.range.end];

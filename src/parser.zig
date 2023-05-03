@@ -244,7 +244,6 @@ const Parser = struct {
     }
 
     fn parseLhs(self: *Parser, a: Allocator) !Ast.Expression {
-        _ = a;
         switch (self.current()) {
             .integer => {
                 const start = self.inputIndex();
@@ -257,6 +256,14 @@ const Parser = struct {
                     .data = .{ .integer = i },
                     .range = .{ .start = start, .end = end },
                 };
+            },
+
+            .l_paren => {
+                self.bump(.l_paren);
+                const inner = self.parseExpression(a);
+                self.expect(.r_paren);
+
+                return inner;
             },
 
             else => self.emitError("expected expression", .{}),

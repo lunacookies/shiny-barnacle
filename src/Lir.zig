@@ -16,23 +16,23 @@ pub const Instruction = struct {
     data: Data,
     range: TextRange,
     pub const Data = union(enum) {
-        push_integer: u32,
+        push: u32,
         add,
-        subtract,
-        multiply,
-        divide,
-        modulus,
+        sub,
+        mul,
+        div,
+        mod,
         or_,
         and_,
         xor,
-        shift_left,
-        shift_right,
-        less_than,
-        less_than_equal,
-        greater_than,
-        greater_than_equal,
-        equal,
-        not_equal,
+        shl,
+        shr,
+        lt,
+        le,
+        gt,
+        ge,
+        eq,
+        ne,
     };
 };
 
@@ -138,7 +138,7 @@ const FunctionAnalyzer = struct {
     fn analyzeExpression(self: *FunctionAnalyzer, expression: Ast.Expression) !Type {
         switch (expression.data) {
             .integer => |integer| {
-                const i = .{ .push_integer = integer };
+                const i = .{ .push = integer };
                 try self.pushInstruction(i, expression.range);
                 return .i32;
             },
@@ -154,21 +154,21 @@ const FunctionAnalyzer = struct {
 
                 const instruction: Instruction.Data = switch (binary.op) {
                     .add => .add,
-                    .subtract => .subtract,
-                    .multiply => .multiply,
-                    .divide => .divide,
-                    .modulus => .modulus,
+                    .subtract => .sub,
+                    .multiply => .mul,
+                    .divide => .div,
+                    .modulus => .mod,
                     .bitwise_or => .or_,
                     .bitwise_and => .and_,
                     .xor => .xor,
-                    .shift_left => .shift_left,
-                    .shift_right => .shift_right,
-                    .less_than => .less_than,
-                    .less_than_equal => .less_than_equal,
-                    .greater_than => .greater_than,
-                    .greater_than_equal => .greater_than_equal,
-                    .equal => .equal,
-                    .not_equal => .not_equal,
+                    .shift_left => .shl,
+                    .shift_right => .shr,
+                    .less_than => .lt,
+                    .less_than_equal => .le,
+                    .greater_than => .gt,
+                    .greater_than_equal => .ge,
+                    .equal => .eq,
+                    .not_equal => .ne,
                 };
                 try self.pushInstruction(instruction, expression.range);
 
@@ -303,23 +303,23 @@ const PrettyPrintContext = struct {
         instruction: Instruction,
     ) Error!void {
         switch (instruction.data) {
-            .push_integer => |integer| try self.writer.print("push_integer\t{}", .{integer}),
+            .push => |integer| try self.writer.print("push\t{}", .{integer}),
             .add => try self.writer.writeAll("add"),
-            .subtract => try self.writer.writeAll("subtract"),
-            .multiply => try self.writer.writeAll("multiply"),
-            .divide => try self.writer.writeAll("divide"),
-            .modulus => try self.writer.writeAll("modulus"),
+            .sub => try self.writer.writeAll("sub"),
+            .mul => try self.writer.writeAll("mul"),
+            .div => try self.writer.writeAll("div"),
+            .mod => try self.writer.writeAll("mod"),
             .or_ => try self.writer.writeAll("or"),
             .and_ => try self.writer.writeAll("and"),
             .xor => try self.writer.writeAll("xor"),
-            .shift_left => try self.writer.writeAll("shift_left"),
-            .shift_right => try self.writer.writeAll("shift_right"),
-            .less_than => try self.writer.writeAll("less_than"),
-            .less_than_equal => try self.writer.writeAll("less_than_equal"),
-            .greater_than => try self.writer.writeAll("greater_than"),
-            .greater_than_equal => try self.writer.writeAll("greater_than_equal"),
-            .equal => try self.writer.writeAll("equal"),
-            .not_equal => try self.writer.writeAll("not_equal"),
+            .shl => try self.writer.writeAll("shl"),
+            .shr => try self.writer.writeAll("shr"),
+            .lt => try self.writer.writeAll("lt"),
+            .le => try self.writer.writeAll("le"),
+            .gt => try self.writer.writeAll("gt"),
+            .ge => try self.writer.writeAll("ge"),
+            .eq => try self.writer.writeAll("eq"),
+            .ne => try self.writer.writeAll("ne"),
         }
     }
 

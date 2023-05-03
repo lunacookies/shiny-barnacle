@@ -28,12 +28,17 @@ pub const Statement = struct {
 
     pub const Data = union(enum) {
         local_declaration: LocalDeclaration,
+        return_: Return,
         block: Block,
     };
 
     pub const LocalDeclaration = struct {
         name: []const u8,
         ty: Ast.Type,
+        value: Ast.Expression,
+    };
+
+    pub const Return = struct {
         value: Ast.Expression,
     };
 
@@ -130,6 +135,7 @@ const PrettyPrintContext = struct {
     fn printStatement(self: *PrettyPrintContext, statement: Ast.Statement) Error!void {
         try switch (statement.data) {
             .local_declaration => |ld| self.printLocalDeclaration(ld),
+            .return_ => |return_| self.printReturn(return_),
             .block => |block| self.printBlock(block),
         };
     }
@@ -142,6 +148,14 @@ const PrettyPrintContext = struct {
         try self.printType(local_declaration.ty);
         try self.writer.writeAll(" = ");
         try self.printExpression(local_declaration.value);
+    }
+
+    fn printReturn(
+        self: *PrettyPrintContext,
+        return_: Ast.Statement.Return,
+    ) Error!void {
+        try self.writer.writeAll("return ");
+        try self.printExpression(return_.value);
     }
 
     fn printBlock(self: *PrettyPrintContext, block: Ast.Statement.Block) Error!void {

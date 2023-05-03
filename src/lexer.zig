@@ -29,6 +29,7 @@ pub const TokenKind = enum(u8) {
     var_kw,
     and_kw,
     or_kw,
+    return_kw,
 
     identifier,
     integer,
@@ -220,6 +221,7 @@ const Lexer = struct {
             .{ .text = "var", .kind = .var_kw },
             .{ .text = "and", .kind = .and_kw },
             .{ .text = "or", .kind = .or_kw },
+            .{ .text = "return", .kind = .return_kw },
         };
 
         const token_text = self.input[token.range.start..token.range.end];

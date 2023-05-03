@@ -72,6 +72,7 @@ const Parser = struct {
     fn parseStatement(self: *Parser, a: Allocator) Allocator.Error!Ast.Statement {
         switch (self.current()) {
             .let_kw => return self.parseLocalDeclaration(a),
+            .return_kw => return self.parseReturn(a),
             .l_brace => return self.parseBlock(a),
             else => self.emitError("expected statement", .{}),
         }
@@ -95,6 +96,20 @@ const Parser = struct {
                     .ty = ty,
                     .value = value,
                 },
+            },
+            .range = .{ .start = start, .end = end },
+        };
+    }
+
+    fn parseReturn(self: *Parser, a: Allocator) !Ast.Statement {
+        const start = self.inputIndex();
+        self.bump(.return_kw);
+        const value = try self.parseExpression(a);
+        const end = self.inputIndex();
+
+        return .{
+            .data = .{
+                .return_ = .{ .value = value },
             },
             .range = .{ .start = start, .end = end },
         };

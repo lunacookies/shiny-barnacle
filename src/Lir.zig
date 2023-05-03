@@ -15,8 +15,10 @@ pub const Body = struct {
 pub const Instruction = struct {
     data: Data,
     range: TextRange,
+
     pub const Data = union(enum) {
         push: u32,
+        ret,
         add,
         sub,
         mul,
@@ -123,6 +125,11 @@ const FunctionAnalyzer = struct {
                 const actualType = try self.analyzeExpression(ld.value);
                 self.ensureTypesMatch(expectedType, actualType, statement.range);
                 try self.insertIntoScope(ld.name, actualType);
+            },
+
+            .return_ => |return_| {
+                _ = try self.analyzeExpression(return_.value);
+                try self.pushInstruction(.ret, statement.range);
             },
 
             .block => |block| {
@@ -304,6 +311,7 @@ const PrettyPrintContext = struct {
     ) Error!void {
         switch (instruction.data) {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
+            .ret => try self.writer.writeAll("ret"),
             .add => try self.writer.writeAll("add"),
             .sub => try self.writer.writeAll("sub"),
             .mul => try self.writer.writeAll("mul"),

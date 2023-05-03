@@ -48,6 +48,32 @@ pub const Expression = struct {
 
     pub const Data = union(enum) {
         integer: u32,
+        binary: Binary,
+    };
+
+    pub const Binary = struct {
+        lhs: *Expression,
+        rhs: *Expression,
+        op: Operator,
+
+        pub const Operator = enum {
+            add,
+            subtract,
+            multiply,
+            divide,
+            modulus,
+            bitwise_or,
+            bitwise_and,
+            xor,
+            shift_left,
+            shift_right,
+            less_than,
+            less_than_equal,
+            greater_than,
+            greater_than_equal,
+            equal,
+            not_equal,
+        };
     };
 };
 
@@ -138,6 +164,36 @@ const PrettyPrintContext = struct {
     fn printExpression(self: *PrettyPrintContext, expression: Ast.Expression) Error!void {
         try switch (expression.data) {
             .integer => |integer| self.printInteger(integer),
+
+            .binary => |binary| {
+                try self.writer.writeByte('(');
+                try self.printExpression(binary.lhs.*);
+                try self.writer.writeAll(") ");
+
+                const op = switch (binary.op) {
+                    .add => "+",
+                    .subtract => "-",
+                    .multiply => "*",
+                    .divide => "/",
+                    .modulus => "%",
+                    .bitwise_or => "|",
+                    .bitwise_and => "&",
+                    .xor => "^",
+                    .shift_left => "<<",
+                    .shift_right => ">>",
+                    .less_than => "<",
+                    .less_than_equal => "<=",
+                    .greater_than => ">",
+                    .greater_than_equal => ">=",
+                    .equal => "==",
+                    .not_equal => "!=",
+                };
+                try self.writer.writeAll(op);
+
+                try self.writer.writeAll(" (");
+                try self.printExpression(binary.rhs.*);
+                try self.writer.writeByte(')');
+            },
         };
     }
 

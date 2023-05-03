@@ -120,6 +120,130 @@ const Parser = struct {
     }
 
     fn parseExpression(self: *Parser, a: Allocator) !Ast.Expression {
+        return self.parseExpressionWithBindingPower(0, a);
+    }
+
+    fn parseExpressionWithBindingPower(
+        self: *Parser,
+        min_binding_power: u8,
+        a: Allocator,
+    ) !Ast.Expression {
+        const OpBindingPower = struct {
+            op: Ast.Expression.Binary.Operator,
+            binding_power: u8,
+        };
+
+        var lhs = try self.parseLhs(a);
+
+        while (true) {
+            const op_binding_power: OpBindingPower = switch (self.current()) {
+                .asterisk => .{
+                    .op = .multiply,
+                    .binding_power = 8,
+                },
+                .slash => .{
+                    .op = .divide,
+                    .binding_power = 8,
+                },
+                .percent => .{
+                    .op = .modulus,
+                    .binding_power = 8,
+                },
+
+                .plus => .{
+                    .op = .add,
+                    .binding_power = 7,
+                },
+                .hyphen => .{
+                    .op = .subtract,
+                    .binding_power = 7,
+                },
+
+                .less_than_less_than => .{
+                    .op = .shift_left,
+                    .binding_power = 6,
+                },
+                .greater_than_greater_than => .{
+                    .op = .shift_right,
+                    .binding_power = 6,
+                },
+
+                .less_than => .{
+                    .op = .less_than,
+                    .binding_power = 5,
+                },
+                .less_than_equals => .{
+                    .op = .less_than_equal,
+                    .binding_power = 5,
+                },
+                .greater_than => .{
+                    .op = .greater_than,
+                    .binding_power = 5,
+                },
+                .greater_than_equals => .{
+                    .op = .greater_than_equal,
+                    .binding_power = 5,
+                },
+
+                .equals_equals => .{
+                    .op = .equal,
+                    .binding_power = 4,
+                },
+                .exclamation_equals => .{
+                    .op = .not_equal,
+                    .binding_power = 4,
+                },
+
+                .ampersand => .{
+                    .op = .bitwise_and,
+                    .binding_power = 3,
+                },
+
+                .caret => .{
+                    .op = .xor,
+                    .binding_power = 2,
+                },
+
+                .pipe => .{
+                    .op = .bitwise_or,
+                    .binding_power = 1,
+                },
+
+                else => break,
+            };
+
+            if (op_binding_power.binding_power < min_binding_power) {
+                break;
+            }
+
+            self.bumpAny(); // eat operator
+
+            const rhs = try self.parseExpressionWithBindingPower(
+                op_binding_power.binding_power + 1,
+                a,
+            );
+
+            const lhs_p = try a.create(Ast.Expression);
+            const rhs_p = try a.create(Ast.Expression);
+            lhs_p.* = lhs;
+            rhs_p.* = rhs;
+
+            lhs = .{
+                .data = .{
+                    .binary = .{
+                        .lhs = lhs_p,
+                        .rhs = rhs_p,
+                        .op = op_binding_power.op,
+                    },
+                },
+                .range = .{ .start = lhs.range.start, .end = rhs.range.end },
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseLhs(self: *Parser, a: Allocator) !Ast.Expression {
         _ = a;
         switch (self.current()) {
             .integer => {
@@ -174,6 +298,14 @@ const Parser = struct {
 
     fn bumpWithText(self: *Parser, kind: lexer.TokenKind) []const u8 {
         std.debug.assert(self.current() == kind);
+        return self.bumpAnyWithText();
+    }
+
+    fn bumpAny(self: *Parser) void {
+        _ = self.bumpAnyWithText();
+    }
+
+    fn bumpAnyWithText(self: *Parser) []const u8 {
         const range = self.tokens[self.cursor].range;
         const text = self.input[range.start..range.end];
         self.cursor += 1;

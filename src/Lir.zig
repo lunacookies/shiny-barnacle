@@ -10,20 +10,46 @@ bodies: std.StringHashMap(Body),
 
 pub const Body = struct {
     instructions: std.ArrayList(Instruction),
+    local_types: std.ArrayList(Type),
 };
 
 pub const Instruction = struct {
     data: Data,
     range: TextRange,
+
     pub const Data = union(enum) {
-        push_integer: u32,
+        push: u32,
+        lst: u32,
+        ret,
+        add,
+        sub,
+        mul,
+        div,
+        mod,
+        or_,
+        and_,
+        xor,
+        shl,
+        shr,
+        lt,
+        le,
+        gt,
+        ge,
+        eq,
+        ne,
     };
 };
 
-const Type = union(enum) {
+pub const Type = union(enum) {
     i32,
 
-    pub fn format(
+    pub fn size(self: Type) u32 {
+        switch (self) {
+            .i32 => return 8, // sneaky hack for now
+        }
+    }
+
+    fn format(
         self: Type,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
@@ -72,7 +98,10 @@ const Analyzer = struct {
         std.debug.assert(!self.lir.bodies.contains(name));
 
         var function_analyzer = FunctionAnalyzer{
-            .body = .{ .instructions = std.ArrayList(Instruction).init(a) },
+            .body = .{
+                .instructions = std.ArrayList(Instruction).init(a),
+                .local_types = std.ArrayList(Type).init(a),
+            },
             .scopes = std.ArrayList(std.StringHashMap(Type)).init(a),
             .file_index = self.file_index,
             .input = self.input,
@@ -103,10 +132,18 @@ const FunctionAnalyzer = struct {
     fn analyzeStatement(self: *FunctionAnalyzer, statement: Ast.Statement) !void {
         switch (statement.data) {
             .local_declaration => |ld| {
-                const expectedType = self.analyzeType(ld.ty);
-                const actualType = try self.analyzeExpression(ld.value);
-                self.ensureTypesMatch(expectedType, actualType, statement.range);
-                try self.insertIntoScope(ld.name, actualType);
+                const expected_type = self.analyzeType(ld.ty);
+                const actual_type = try self.analyzeExpression(ld.value);
+                self.ensureTypesMatch(expected_type, actual_type, statement.range);
+
+                const local_index = try self.createLocal(ld.name, actual_type);
+                const i = .{ .lst = local_index };
+                try self.pushInstruction(i, statement.range);
+            },
+
+            .return_ => |return_| {
+                _ = try self.analyzeExpression(return_.value);
+                try self.pushInstruction(.ret, statement.range);
             },
 
             .block => |block| {
@@ -122,8 +159,40 @@ const FunctionAnalyzer = struct {
     fn analyzeExpression(self: *FunctionAnalyzer, expression: Ast.Expression) !Type {
         switch (expression.data) {
             .integer => |integer| {
-                const i = .{ .push_integer = integer };
+                const i = .{ .push = integer };
                 try self.pushInstruction(i, expression.range);
+                return .i32;
+            },
+
+            .binary => |binary| {
+                const lhs = binary.lhs.*;
+                const rhs = binary.rhs.*;
+
+                const lhs_type = try self.analyzeExpression(lhs);
+                const rhs_type = try self.analyzeExpression(rhs);
+                self.ensureTypesMatch(.i32, lhs_type, lhs.range);
+                self.ensureTypesMatch(.i32, rhs_type, rhs.range);
+
+                const instruction: Instruction.Data = switch (binary.op) {
+                    .add => .add,
+                    .subtract => .sub,
+                    .multiply => .mul,
+                    .divide => .div,
+                    .modulus => .mod,
+                    .bitwise_or => .or_,
+                    .bitwise_and => .and_,
+                    .xor => .xor,
+                    .shift_left => .shl,
+                    .shift_right => .shr,
+                    .less_than => .lt,
+                    .less_than_equal => .le,
+                    .greater_than => .gt,
+                    .greater_than_equal => .ge,
+                    .equal => .eq,
+                    .not_equal => .ne,
+                };
+                try self.pushInstruction(instruction, expression.range);
+
                 return .i32;
             },
         }
@@ -134,13 +203,16 @@ const FunctionAnalyzer = struct {
         self.emitError(ty.range, "unknown type", .{});
     }
 
-    fn insertIntoScope(
+    fn createLocal(
         self: *FunctionAnalyzer,
         name: []const u8,
         ty: Type,
-    ) !void {
+    ) !u32 {
         const last_scope = &self.scopes.items[self.scopes.items.len - 1];
         try last_scope.put(name, ty);
+        const i = self.body.local_types.items.len;
+        try self.body.local_types.append(ty);
+        return @intCast(u32, i);
     }
 
     fn ensureTypesMatch(
@@ -255,7 +327,25 @@ const PrettyPrintContext = struct {
         instruction: Instruction,
     ) Error!void {
         switch (instruction.data) {
-            .push_integer => |integer| try self.writer.print("push_integer\t{}", .{integer}),
+            .push => |integer| try self.writer.print("push\t{}", .{integer}),
+            .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
+            .ret => try self.writer.writeAll("ret"),
+            .add => try self.writer.writeAll("add"),
+            .sub => try self.writer.writeAll("sub"),
+            .mul => try self.writer.writeAll("mul"),
+            .div => try self.writer.writeAll("div"),
+            .mod => try self.writer.writeAll("mod"),
+            .or_ => try self.writer.writeAll("or"),
+            .and_ => try self.writer.writeAll("and"),
+            .xor => try self.writer.writeAll("xor"),
+            .shl => try self.writer.writeAll("shl"),
+            .shr => try self.writer.writeAll("shr"),
+            .lt => try self.writer.writeAll("lt"),
+            .le => try self.writer.writeAll("le"),
+            .gt => try self.writer.writeAll("gt"),
+            .ge => try self.writer.writeAll("ge"),
+            .eq => try self.writer.writeAll("eq"),
+            .ne => try self.writer.writeAll("ne"),
         }
     }
 

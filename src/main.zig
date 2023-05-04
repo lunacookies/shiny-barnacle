@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const indexer = @import("indexer.zig");
+const codegen = @import("codegen.zig");
 const Lir = @import("Lir.zig");
 
 pub fn main() !void {
@@ -40,6 +41,30 @@ pub fn main() !void {
             allocator,
         );
         std.debug.print("\n== LIR ==\n\n{}\n", .{lir});
+
+        var assembly = try codegen.codegen(input.items, lir, allocator);
+        var assembly_file = try std.fs.cwd().createFile("out.s", .{});
+        try assembly_file.writeAll(assembly);
+
+        var as = std.ChildProcess.init(
+            &[_][]const u8{ "as", "-arch", "x86_64", "-o", "out.o", "out.s" },
+            allocator,
+        );
+        _ = try as.spawnAndWait();
+
+        var ld = std.ChildProcess.init(
+            &[_][]const u8{
+                "ld",
+                "-syslibroot",
+                "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+                "-lSystem",
+                "-o",
+                "out",
+                "out.o",
+            },
+            allocator,
+        );
+        _ = try ld.spawnAndWait();
     }
 }
 

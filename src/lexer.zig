@@ -94,12 +94,7 @@ const Lexer = struct {
 
     fn lex(self: *Lexer) !std.ArrayList(Token) {
         while (!self.atEof()) {
-            while (self.current() == ' ' or
-                self.current() == '\t' or
-                self.current() == '\n')
-            {
-                self.cursor += 1;
-            }
+            self.skipWhitespace();
 
             switch (self.current()) {
                 '.' => try self.oneByteToken(.dot),
@@ -178,6 +173,15 @@ const Lexer = struct {
         }
 
         return self.tokens;
+    }
+
+    fn skipWhitespace(self: *Lexer) void {
+        while (self.current() == ' ' or
+            self.current() == '\t' or
+            self.current() == '\n')
+        {
+            self.cursor += 1;
+        }
     }
 
     fn oneByteToken(self: *Lexer, kind: TokenKind) !void {

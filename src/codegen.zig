@@ -12,14 +12,25 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
         const name = entry.key_ptr.*;
         const body = entry.value_ptr.*;
 
+        var local_offsets = try std.ArrayList(u32)
+            .initCapacity(a, body.local_types.items.len);
+
+        var current_offset: u32 = 0;
+        for (body.local_types.items) |ty| {
+            current_offset += ty.size();
+            try local_offsets.append(current_offset);
+        }
+
         var context = CodegenContext{
             .assembly = &assembly,
             .input = input,
+            .body = body,
             .depth = 0,
             .function_name = name,
+            .local_offsets = local_offsets.items,
         };
 
-        try context.genFunction(body);
+        try context.genFunction();
     }
 
     return assembly.items;
@@ -28,14 +39,16 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
 const CodegenContext = struct {
     assembly: *std.ArrayList(u8),
     input: []const u8,
+    body: Lir.Body,
     depth: u32,
     function_name: []const u8,
+    local_offsets: []const u32,
 
-    fn genFunction(self: *CodegenContext, body: Lir.Body) !void {
+    fn genFunction(self: *CodegenContext) !void {
         try self.print(".global _{s}\n", .{self.function_name});
         try self.print("_{s}:\n", .{self.function_name});
 
-        for (body.instructions.items) |instruction| {
+        for (self.body.instructions.items) |instruction| {
             try self.genInstruction(instruction);
         }
 
@@ -51,6 +64,12 @@ const CodegenContext = struct {
             .push => |value| {
                 try self.print("\tmov\trax, {}\n", .{value});
                 try self.push();
+            },
+
+            .lst => |local_index| {
+                try self.print("\tlea\trdi, [rbp + {}]\n", .{self.local_offsets[local_index]});
+                const ty = self.body.local_types.items[local_index];
+                try self.store(ty);
             },
 
             .ret => try self.print("\tjmp\t.L.return.{s}\n", .{self.function_name}),
@@ -125,6 +144,13 @@ const CodegenContext = struct {
         }
 
         try self.push();
+    }
+
+    fn store(self: *CodegenContext, ty: Lir.Type) !void {
+        try self.pop("rax");
+        switch (ty) {
+            .i32 => try self.print("\tmov\t[rdi], rax\n", .{}),
+        }
     }
 
     fn push(self: *CodegenContext) !void {

@@ -10,6 +10,7 @@ bodies: std.StringHashMap(Body),
 
 pub const Body = struct {
     instructions: std.ArrayList(Instruction),
+    local_types: std.ArrayList(Type),
 };
 
 pub const Instruction = struct {
@@ -18,6 +19,7 @@ pub const Instruction = struct {
 
     pub const Data = union(enum) {
         push: u32,
+        lst: u32,
         ret,
         add,
         sub,
@@ -38,10 +40,16 @@ pub const Instruction = struct {
     };
 };
 
-const Type = union(enum) {
+pub const Type = union(enum) {
     i32,
 
-    pub fn format(
+    pub fn size(self: Type) u32 {
+        switch (self) {
+            .i32 => return 8, // sneaky hack for now
+        }
+    }
+
+    fn format(
         self: Type,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
@@ -90,7 +98,10 @@ const Analyzer = struct {
         std.debug.assert(!self.lir.bodies.contains(name));
 
         var function_analyzer = FunctionAnalyzer{
-            .body = .{ .instructions = std.ArrayList(Instruction).init(a) },
+            .body = .{
+                .instructions = std.ArrayList(Instruction).init(a),
+                .local_types = std.ArrayList(Type).init(a),
+            },
             .scopes = std.ArrayList(std.StringHashMap(Type)).init(a),
             .file_index = self.file_index,
             .input = self.input,
@@ -121,10 +132,13 @@ const FunctionAnalyzer = struct {
     fn analyzeStatement(self: *FunctionAnalyzer, statement: Ast.Statement) !void {
         switch (statement.data) {
             .local_declaration => |ld| {
-                const expectedType = self.analyzeType(ld.ty);
-                const actualType = try self.analyzeExpression(ld.value);
-                self.ensureTypesMatch(expectedType, actualType, statement.range);
-                try self.insertIntoScope(ld.name, actualType);
+                const expected_type = self.analyzeType(ld.ty);
+                const actual_type = try self.analyzeExpression(ld.value);
+                self.ensureTypesMatch(expected_type, actual_type, statement.range);
+
+                const local_index = try self.createLocal(ld.name, actual_type);
+                const i = .{ .lst = local_index };
+                try self.pushInstruction(i, statement.range);
             },
 
             .return_ => |return_| {
@@ -189,13 +203,16 @@ const FunctionAnalyzer = struct {
         self.emitError(ty.range, "unknown type", .{});
     }
 
-    fn insertIntoScope(
+    fn createLocal(
         self: *FunctionAnalyzer,
         name: []const u8,
         ty: Type,
-    ) !void {
+    ) !u32 {
         const last_scope = &self.scopes.items[self.scopes.items.len - 1];
         try last_scope.put(name, ty);
+        const i = self.body.local_types.items.len;
+        try self.body.local_types.append(ty);
+        return @intCast(u32, i);
     }
 
     fn ensureTypesMatch(
@@ -311,6 +328,7 @@ const PrettyPrintContext = struct {
     ) Error!void {
         switch (instruction.data) {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
+            .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
             .ret => try self.writer.writeAll("ret"),
             .add => try self.writer.writeAll("add"),
             .sub => try self.writer.writeAll("sub"),

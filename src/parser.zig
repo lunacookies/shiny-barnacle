@@ -265,10 +265,8 @@ const Parser = struct {
                 const text = self.bumpWithText(.integer);
                 const end = self.inputIndex();
 
-                const i = std.fmt.parseInt(u32, text, 10) catch unreachable;
-
                 return .{
-                    .data = .{ .integer = i },
+                    .data = .{ .integer = text },
                     .range = .{ .start = start, .end = end },
                 };
             },

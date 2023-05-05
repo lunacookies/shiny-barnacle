@@ -13,12 +13,19 @@ pub const Body = struct {
     local_types: std.ArrayList(Type),
 };
 
+// At some point this may need to change, when types get more complex
+// The IRType should only really care about things like sizes, so should be an enum
+pub const IRType = Type;
+
 pub const Instruction = struct {
     data: Data,
+    /// The type associated with an instruction, in most cases this is the return type
+    /// If the instruction doesn't have an associated type then this value is undefined
+    ty: IRType,
     range: TextRange,
 
     pub const Data = union(enum) {
-        push: u32,
+        push: u64,
         lst: u32,
         lld: u32,
         ret,
@@ -38,16 +45,69 @@ pub const Instruction = struct {
         ge,
         eq,
         ne,
+        /// Cast from this type to the return type given by the IRType
+        cast: Type,
     };
 };
 
 pub const Type = union(enum) {
     i32,
+    i64,
+    u32,
+    u64,
+    u8,
 
     pub fn size(self: Type) u32 {
         switch (self) {
-            .i32 => return 8, // sneaky hack for now
+            .i32, .u32 => return 4,
+            .i64, .u64 => return 8,
+            .u8 => return 1,
         }
+    }
+
+    pub fn alignment(self: Type) u32 {
+        return self.size();
+    }
+
+    pub fn isSigned(self: Type) bool {
+        switch (self) {
+            .i32, .i64 => return true,
+            .u32, .u64, .u8 => return false,
+        }
+    }
+
+    pub fn isNumeric(self: Type) bool {
+        return switch (self) {
+            .u32, .u64, .i32, .i64, .u8 => true,
+        };
+    }
+
+    pub fn isEqual(a: Type, b: Type) bool {
+        return std.meta.eql(a, b);
+    }
+
+    pub fn toZigType(comptime a: Type) type {
+        return switch (a) {
+            .u8 => u8,
+            .u32 => u32,
+            .u64 => u64,
+            .i32 => i32,
+            .i64 => i64,
+        };
+    }
+
+    /// Returns whether it is possible to implicitly cast an `a` to a `b`
+    pub fn isSubtype(a: Type, b: Type) bool {
+        if (isEqual(a, b)) return true;
+        if (!(a.isNumeric() and b.isNumeric())) return false;
+        return a.size() < b.size() and (b.isSigned() or !a.isSigned());
+    }
+
+    // Only really makes sense if you want to know if you know a and b aren't
+    // equal, but want to find out if you can still cast
+    pub fn isStrictSubtype(a: Type, b: Type) bool {
+        if (!(a.isNumeric() and b.isNumeric())) return false;
+        return a.size() < b.size() and (b.isSigned() or !a.isSigned());
     }
 
     fn format(
@@ -143,17 +203,18 @@ const FunctionAnalyzer = struct {
         switch (statement.data) {
             .local_declaration => |ld| {
                 const expected_type = self.analyzeType(ld.ty);
-                const actual_type = try self.analyzeExpression(ld.value);
-                self.ensureTypesMatch(expected_type, actual_type, statement.range);
+                const actual_type = try self.analyzeExpression(ld.value, expected_type);
+                // self.ensureTypesMatch(expected_type, actual_type, statement.range);
+                std.debug.assert(actual_type.isEqual(expected_type));
 
                 const local_index = try self.createLocal(ld.name, actual_type);
                 const i = .{ .lst = local_index };
-                try self.pushInstruction(i, statement.range);
+                try self.pushInstruction(i, expected_type, statement.range);
             },
 
             .return_ => |return_| {
-                _ = try self.analyzeExpression(return_.value);
-                try self.pushInstruction(.ret, statement.range);
+                _ = try self.analyzeExpression(return_.value, .i32);
+                try self.pushInstruction(.ret, .i32, statement.range);
             },
 
             .block => |block| {
@@ -166,28 +227,49 @@ const FunctionAnalyzer = struct {
         }
     }
 
-    fn analyzeExpression(self: *FunctionAnalyzer, expression: Ast.Expression) !Type {
+    fn parseInt(integer_str: []const u8, ty: Type) !u64 {
+        return switch (ty) {
+            .u8 => @intCast(u64, try std.fmt.parseInt(u8, integer_str, 10)),
+            .u32 => @intCast(u64, try std.fmt.parseInt(u32, integer_str, 10)),
+            .u64 => @intCast(u64, try std.fmt.parseInt(u64, integer_str, 10)),
+            .i32 => @bitCast(u64, @intCast(i64, try std.fmt.parseInt(i32, integer_str, 10))),
+            .i64 => @bitCast(u64, try std.fmt.parseInt(i64, integer_str, 10)),
+        };
+    }
+
+    fn analyzeExpression(self: *FunctionAnalyzer, expression: Ast.Expression, expected_type_opt: ?Type) !Type {
         switch (expression.data) {
-            .integer => |integer| {
-                const i = .{ .push = integer };
-                try self.pushInstruction(i, expression.range);
-                return .i32;
+            .integer => |integer_str| {
+                if (expected_type_opt) |expected_type| {
+                    // There's probably a nicer way to do this, but I couldn't find how to get it to unroll the union(enum)
+                    const integer = parseInt(integer_str, expected_type) catch
+                        self.emitError(expression.range, "integer “{s}” out of range for type “{}”", .{ integer_str, expected_type });
+                    const i = .{ .push = integer };
+                    try self.pushInstruction(i, expected_type, expression.range);
+                    return expected_type;
+                } else {
+                    self.emitError(expression.range, "cannot infer type of integer", .{});
+                }
             },
 
             .name => |name| {
                 const scopeEntry = self.lookupLocal(name, expression.range);
-                try self.pushInstruction(.{ .lld = scopeEntry.index }, expression.range);
-                return scopeEntry.ty;
+                try self.pushInstruction(.{ .lld = scopeEntry.index }, scopeEntry.ty, expression.range);
+                const castedTy = try self.checkAndCast(scopeEntry.ty, expected_type_opt, expression.range);
+                return castedTy;
             },
 
             .binary => |binary| {
                 const lhs = binary.lhs.*;
                 const rhs = binary.rhs.*;
 
-                const lhs_type = try self.analyzeExpression(lhs);
-                const rhs_type = try self.analyzeExpression(rhs);
-                self.ensureTypesMatch(.i32, lhs_type, lhs.range);
-                self.ensureTypesMatch(.i32, rhs_type, rhs.range);
+                const lhs_type = try self.analyzeExpression(lhs, expected_type_opt);
+                self.ensureTypeNumeric(lhs_type, lhs.range);
+                const rhs_type = try self.analyzeExpression(rhs, lhs_type);
+                std.debug.assert(lhs_type.isEqual(rhs_type));
+                // self.ensureTypeNumeric(rhs_type, rhs.range);
+                // self.ensureTypesMatch(lhs_type, rhs_type, rhs.range);
+                const ty = lhs_type;
 
                 const instruction: Instruction.Data = switch (binary.op) {
                     .add => .add,
@@ -207,15 +289,19 @@ const FunctionAnalyzer = struct {
                     .equal => .eq,
                     .not_equal => .ne,
                 };
-                try self.pushInstruction(instruction, expression.range);
+                try self.pushInstruction(instruction, ty, expression.range);
 
-                return .i32;
+                return ty;
             },
         }
     }
 
     fn analyzeType(self: *FunctionAnalyzer, ty: Ast.Type) Type {
         if (std.mem.eql(u8, ty.name, "i32")) return .i32;
+        if (std.mem.eql(u8, ty.name, "i64")) return .i64;
+        if (std.mem.eql(u8, ty.name, "u32")) return .u32;
+        if (std.mem.eql(u8, ty.name, "u64")) return .u64;
+        if (std.mem.eql(u8, ty.name, "u8")) return .u8;
         self.emitError(ty.range, "unknown type", .{});
     }
 
@@ -239,6 +325,16 @@ const FunctionAnalyzer = struct {
             }
         }
         self.emitError(range, "undeclared variable “{}”\n", .{name});
+    }
+
+    fn ensureTypeNumeric(self: *@This(), ty: Type, range: TextRange) void {
+        if (ty.isNumeric()) return;
+
+        self.emitError(
+            range,
+            "expected numeric type but found “{}”\n",
+            .{ty},
+        );
     }
 
     fn ensureTypesMatch(
@@ -270,16 +366,47 @@ const FunctionAnalyzer = struct {
         std.os.exit(92);
     }
 
-    fn pushInstruction(
+    fn pushUntypedInstruction(
         self: *FunctionAnalyzer,
         data: Instruction.Data,
         range: TextRange,
     ) !void {
         const instruction = .{
             .data = data,
+            .ty = undefined,
             .range = range,
         };
         try self.body.instructions.append(instruction);
+    }
+
+    fn pushInstruction(
+        self: *FunctionAnalyzer,
+        data: Instruction.Data,
+        ty: IRType,
+        range: TextRange,
+    ) !void {
+        const instruction = .{
+            .data = data,
+            .ty = ty,
+            .range = range,
+        };
+        try self.body.instructions.append(instruction);
+    }
+
+    fn checkAndCast(self: *@This(), src: Type, dest: ?Type, range: TextRange) !Type {
+        if (dest) |d| {
+            if (src.isEqual(d)) return d;
+            if (src.isSubtype(d)) {
+                try self.body.instructions.append(.{
+                    .data = .{ .cast = src },
+                    .ty = d,
+                    .range = range,
+                });
+                return d;
+            }
+            self.emitError(range, "expected type “{}” but found “{}”\n", .{ d, src });
+        }
+        return src;
     }
 
     fn pushScope(self: *FunctionAnalyzer) !void {
@@ -352,6 +479,7 @@ const PrettyPrintContext = struct {
         self: *PrettyPrintContext,
         instruction: Instruction,
     ) Error!void {
+        try self.writer.print("<{}>\t", .{instruction.ty});
         switch (instruction.data) {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
             .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
@@ -373,6 +501,7 @@ const PrettyPrintContext = struct {
             .ge => try self.writer.writeAll("ge"),
             .eq => try self.writer.writeAll("eq"),
             .ne => try self.writer.writeAll("ne"),
+            .cast => |ty| try self.writer.print("cast\t{}", .{ty}),
         }
     }
 

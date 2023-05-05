@@ -52,7 +52,7 @@ pub const Expression = struct {
     range: TextRange,
 
     pub const Data = union(enum) {
-        integer: u32,
+        integer: []const u8,
         binary: Binary,
         name: []const u8,
     };
@@ -178,7 +178,7 @@ const PrettyPrintContext = struct {
 
     fn printExpression(self: *PrettyPrintContext, expression: Ast.Expression) Error!void {
         try switch (expression.data) {
-            .integer => |integer| self.printInteger(integer),
+            .integer => |integer| self.writer.writeAll(integer),
             .name => |name| self.writer.writeAll(name),
 
             .binary => |binary| {

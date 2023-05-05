@@ -88,6 +88,7 @@ const Lexer = struct {
         .{ "func", .func_kw },
         .{ "let", .let_kw },
         .{ "var", .var_kw },
+        .{ "return", .return_kw },
     });
 
     fn init(input: []const u8, allocator: std.mem.Allocator) Lexer {
@@ -225,7 +226,7 @@ const Lexer = struct {
         }
 
         const token_text = self.input[token.range.start..token.range.end];
-        token.kind = keywords.get(token_text);
+        token.kind = keywords.get(token_text) orelse .identifier;
 
         try self.tokens.append(token);
     }

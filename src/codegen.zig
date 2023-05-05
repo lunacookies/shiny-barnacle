@@ -53,12 +53,17 @@ const CodegenContext = struct {
         try self.print(".global {s}\n", .{self.function_name});
         try self.print("{s}:\n", .{self.function_name});
 
+        try self.print("\tpush\trbp\n", .{});
+        try self.print("\tmov\trbp, rsp\n", .{});
+        try self.print("\tsub\trbp, {}\n", .{self.local_offsets[self.local_offsets.len - 1]});
+
         for (self.body.instructions.items) |instruction| {
             try self.genInstruction(instruction);
         }
 
         try self.print(".L.return.{s}:\n", .{self.function_name});
         try self.pop("rax");
+        try self.print("\tpop\trbp\n", .{});
         try self.print("\tret\n", .{});
 
         std.debug.assert(self.depth == 0);
@@ -72,7 +77,7 @@ const CodegenContext = struct {
             },
 
             .lst => |local_index| {
-                try self.print("\tlea\trdi, [rbp + {}]\n", .{self.local_offsets[local_index]});
+                try self.print("\tlea\trdi, [rbp - {}]\n", .{self.local_offsets[local_index]});
                 const ty = self.body.local_types.items[local_index];
                 try self.store(ty);
             },

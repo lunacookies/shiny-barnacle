@@ -5,6 +5,8 @@ const indexer = @import("indexer.zig");
 const codegen = @import("codegen.zig");
 const Lir = @import("Lir.zig");
 
+const builtin = @import("builtin");
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -46,25 +48,9 @@ pub fn main() !void {
         var assembly_file = try std.fs.cwd().createFile("out.s", .{});
         try assembly_file.writeAll(assembly);
 
-        var as = std.ChildProcess.init(
-            &[_][]const u8{ "as", "-arch", "x86_64", "-o", "out.o", "out.s" },
-            allocator,
-        );
-        _ = try as.spawnAndWait();
+        var clang = std.ChildProcess.init(&[_][]const u8{ "clang", "-o", "out", "out.s" }, allocator);
 
-        var ld = std.ChildProcess.init(
-            &[_][]const u8{
-                "ld",
-                "-syslibroot",
-                "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
-                "-lSystem",
-                "-o",
-                "out",
-                "out.o",
-            },
-            allocator,
-        );
-        _ = try ld.spawnAndWait();
+        _ = try clang.spawnAndWait();
     }
 }
 

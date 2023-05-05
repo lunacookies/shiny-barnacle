@@ -45,8 +45,13 @@ const CodegenContext = struct {
     local_offsets: []const u32,
 
     fn genFunction(self: *CodegenContext) !void {
-        try self.print(".global _{s}\n", .{self.function_name});
-        try self.print("_{s}:\n", .{self.function_name});
+        if (std.mem.eql(u8, self.function_name, "main")) {
+            try self.print(".global _main\n", .{});
+            try self.print("_main:\n", .{});
+        }
+
+        try self.print(".global {s}\n", .{self.function_name});
+        try self.print("{s}:\n", .{self.function_name});
 
         for (self.body.instructions.items) |instruction| {
             try self.genInstruction(instruction);

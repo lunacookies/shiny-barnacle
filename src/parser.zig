@@ -281,6 +281,16 @@ const Parser = struct {
                 return inner;
             },
 
+            .identifier => {
+                const start = self.inputIndex();
+                const name = self.expectWithText(.identifier);
+                const end = self.inputIndex();
+                return .{
+                    .data = .{ .name = name },
+                    .range = .{ .start = start, .end = end },
+                };
+            },
+
             else => self.emitError("expected expression", .{}),
         }
     }

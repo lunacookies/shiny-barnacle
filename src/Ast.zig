@@ -54,6 +54,7 @@ pub const Expression = struct {
     pub const Data = union(enum) {
         integer: u32,
         binary: Binary,
+        name: []const u8,
     };
 
     pub const Binary = struct {
@@ -178,6 +179,7 @@ const PrettyPrintContext = struct {
     fn printExpression(self: *PrettyPrintContext, expression: Ast.Expression) Error!void {
         try switch (expression.data) {
             .integer => |integer| self.printInteger(integer),
+            .name => |name| self.writer.writeAll(name),
 
             .binary => |binary| {
                 try self.writer.writeByte('(');

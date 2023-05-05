@@ -20,6 +20,7 @@ pub const Instruction = struct {
     pub const Data = union(enum) {
         push: u32,
         lst: u32,
+        lld: u32,
         ret,
         add,
         sub,
@@ -97,16 +98,7 @@ const Analyzer = struct {
         // The indexer has already handled raising an error about this.
         std.debug.assert(!self.lir.bodies.contains(name));
 
-        var function_analyzer = FunctionAnalyzer{
-            .body = .{
-                .instructions = std.ArrayList(Instruction).init(a),
-                .local_types = std.ArrayList(Type).init(a),
-            },
-            .scopes = std.ArrayList(std.StringHashMap(Type)).init(a),
-            .file_index = self.file_index,
-            .input = self.input,
-            .allocator = a,
-        };
+        var function_analyzer = FunctionAnalyzer.init(a, self.file_index, self.input);
         try function_analyzer.analyzeFunction(function);
 
         try self.lir.bodies.put(name, function_analyzer.body);
@@ -115,10 +107,28 @@ const Analyzer = struct {
 
 const FunctionAnalyzer = struct {
     body: Body,
-    scopes: std.ArrayList(std.StringHashMap(Type)),
+    scopes: std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)),
     file_index: indexer.FileIndex,
     input: []const u8,
     allocator: Allocator,
+
+    const ScopeEntry = struct {
+        ty: Type,
+        index: u32,
+    };
+
+    fn init(a: Allocator, file_index: indexer.FileIndex, input: []const u8) @This() {
+        return FunctionAnalyzer{
+            .body = .{
+                .instructions = std.ArrayList(Instruction).init(a),
+                .local_types = std.ArrayList(Type).init(a),
+            },
+            .scopes = std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)).init(a),
+            .file_index = file_index,
+            .input = input,
+            .allocator = a,
+        };
+    }
 
     fn analyzeFunction(
         self: *FunctionAnalyzer,
@@ -162,6 +172,12 @@ const FunctionAnalyzer = struct {
                 const i = .{ .push = integer };
                 try self.pushInstruction(i, expression.range);
                 return .i32;
+            },
+
+            .name => |name| {
+                const scopeEntry = self.lookupLocal(name, expression.range);
+                try self.pushInstruction(.{ .lld = scopeEntry.index }, expression.range);
+                return scopeEntry.ty;
             },
 
             .binary => |binary| {
@@ -209,10 +225,20 @@ const FunctionAnalyzer = struct {
         ty: Type,
     ) !u32 {
         const last_scope = &self.scopes.items[self.scopes.items.len - 1];
-        try last_scope.put(name, ty);
-        const i = self.body.local_types.items.len;
+        const i = @intCast(u32, self.body.local_types.items.len);
+        try last_scope.put(self.allocator, name, ScopeEntry{ .ty = ty, .index = i });
         try self.body.local_types.append(ty);
-        return @intCast(u32, i);
+        return i;
+    }
+
+    fn lookupLocal(self: *@This(), name: []const u8, range: TextRange) *ScopeEntry {
+        var i = self.scopes.items.len - 1;
+        while (i >= 0) : (i += 1) {
+            if (self.scopes.items[i].getPtr(name)) |entry| {
+                return entry;
+            }
+        }
+        self.emitError(range, "undeclared variable “{}”\n", .{name});
     }
 
     fn ensureTypesMatch(
@@ -257,7 +283,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn pushScope(self: *FunctionAnalyzer) !void {
-        const new_scope = std.StringHashMap(Type).init(self.allocator);
+        const new_scope = std.StringHashMapUnmanaged(ScopeEntry){};
         try self.scopes.append(new_scope);
     }
 
@@ -329,6 +355,7 @@ const PrettyPrintContext = struct {
         switch (instruction.data) {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
             .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
+            .lld => |local_index| try self.writer.print("lld\t{}", .{local_index}),
             .ret => try self.writer.writeAll("ret"),
             .add => try self.writer.writeAll("add"),
             .sub => try self.writer.writeAll("sub"),

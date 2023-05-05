@@ -77,9 +77,13 @@ const CodegenContext = struct {
             },
 
             .lst => |local_index| {
-                try self.print("\tlea\trdi, [rbp - {}]\n", .{self.local_offsets[local_index]});
                 const ty = self.body.local_types.items[local_index];
-                try self.store(ty);
+                try self.storeLocal(ty, local_index);
+            },
+
+            .lld => |local_index| {
+                const ty = self.body.local_types.items[local_index];
+                try self.loadLocal(ty, local_index);
             },
 
             .ret => try self.print("\tjmp\t.L.return.{s}\n", .{self.function_name}),
@@ -156,11 +160,18 @@ const CodegenContext = struct {
         try self.push();
     }
 
-    fn store(self: *CodegenContext, ty: Lir.Type) !void {
+    fn storeLocal(self: *CodegenContext, ty: Lir.Type, local_index: u32) !void {
         try self.pop("rax");
         switch (ty) {
-            .i32 => try self.print("\tmov\t[rdi], rax\n", .{}),
+            .i32 => try self.print("\tmov\t[rbp - {}], eax\n", .{self.local_offsets[local_index]}),
         }
+    }
+
+    fn loadLocal(self: *CodegenContext, ty: Lir.Type, local_index: u32) !void {
+        switch (ty) {
+            .i32 => try self.print("\tmov\teax, [rbp - {}]\n", .{self.local_offsets[local_index]}),
+        }
+        try self.push();
     }
 
     fn push(self: *CodegenContext) !void {

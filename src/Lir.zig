@@ -479,7 +479,8 @@ const PrettyPrintContext = struct {
         self: *PrettyPrintContext,
         instruction: Instruction,
     ) Error!void {
-        try self.writer.print("<{}>\t", .{instruction.ty});
+        try self.printType(instruction.ty);
+        try self.writer.writeByte('\t');
         switch (instruction.data) {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
             .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
@@ -501,65 +502,21 @@ const PrettyPrintContext = struct {
             .ge => try self.writer.writeAll("ge"),
             .eq => try self.writer.writeAll("eq"),
             .ne => try self.writer.writeAll("ne"),
-            .cast => |ty| try self.writer.print("cast\t{}", .{ty}),
+            .cast => |ty| {
+                try self.writer.writeAll("cast\t");
+                try self.printType(ty);
+            },
         }
     }
 
-    fn printFunction(
-        self: *PrettyPrintContext,
-        name: []const u8,
-        function: Ast.Item.Function,
-    ) Error!void {
-        try self.writer.print("func {s} ", .{name});
-        try self.printStatement(function.body);
-    }
-
-    fn printType(self: *PrettyPrintContext, ty: Ast.Type) Error!void {
-        try self.writer.writeAll(ty.name);
-    }
-
-    fn printStatement(self: *PrettyPrintContext, statement: Ast.Statement) Error!void {
-        try switch (statement.data) {
-            .local_declaration => |ld| self.printLocalDeclaration(ld),
-            .block => |block| self.printBlock(block),
+    fn printType(self: *PrettyPrintContext, ty: Lir.Type) Error!void {
+        try switch (ty) {
+            .i32 => self.writer.writeAll("i32"),
+            .i64 => self.writer.writeAll("i64"),
+            .u32 => self.writer.writeAll("u32"),
+            .u64 => self.writer.writeAll("u64"),
+            .u8 => self.writer.writeAll("u8"),
         };
-    }
-
-    fn printLocalDeclaration(
-        self: *PrettyPrintContext,
-        local_declaration: Ast.Statement.LocalDeclaration,
-    ) Error!void {
-        try self.writer.print("let {s} ", .{local_declaration.name});
-        try self.printType(local_declaration.ty);
-        try self.writer.writeAll(" = ");
-        try self.printExpression(local_declaration.value);
-    }
-
-    fn printBlock(self: *PrettyPrintContext, block: Ast.Statement.Block) Error!void {
-        if (block.statements.items.len == 0) {
-            try self.writer.writeAll("{}");
-            return;
-        }
-
-        try self.writer.writeByte('{');
-        self.indentation += 1;
-        for (block.statements.items) |statement| {
-            try self.newline();
-            try self.printStatement(statement);
-        }
-        self.indentation -= 1;
-        try self.newline();
-        try self.writer.writeByte('}');
-    }
-
-    fn printExpression(self: *PrettyPrintContext, expression: Ast.Expression) Error!void {
-        try switch (expression.data) {
-            .integer => |integer| self.printInteger(integer),
-        };
-    }
-
-    fn printInteger(self: *PrettyPrintContext, integer: u32) Error!void {
-        try self.writer.print("{}", .{integer});
     }
 
     fn newline(self: *PrettyPrintContext) Error!void {

@@ -362,13 +362,20 @@ const FunctionAnalyzer = struct {
     }
 
     fn lookupLocal(self: *@This(), name: []const u8, range: TextRange) *ScopeEntry {
+        // There is always at least one scope.
+        std.debug.assert(self.scopes.items.len >= 1);
+
         var i = self.scopes.items.len - 1;
-        while (i >= 0) : (i += 1) {
+        while (true) {
             if (self.scopes.items[i].getPtr(name)) |entry| {
                 return entry;
             }
+
+            if (i == 0) break;
+            i -= 1;
         }
-        self.emitError(range, "undeclared variable “{}”\n", .{name});
+
+        self.emitError(range, "undeclared variable “{s}”\n", .{name});
     }
 
     fn ensureTypeNumeric(self: *@This(), ty: Type, range: TextRange) void {

@@ -221,16 +221,6 @@ const FunctionAnalyzer = struct {
         }
     }
 
-    fn parseInt(integer_str: []const u8, ty: Type) !u64 {
-        return switch (ty) {
-            .u8 => @intCast(u64, try std.fmt.parseInt(u8, integer_str, 10)),
-            .u32 => @intCast(u64, try std.fmt.parseInt(u32, integer_str, 10)),
-            .u64 => @intCast(u64, try std.fmt.parseInt(u64, integer_str, 10)),
-            .i32 => @bitCast(u64, @intCast(i64, try std.fmt.parseInt(i32, integer_str, 10))),
-            .i64 => @bitCast(u64, try std.fmt.parseInt(i64, integer_str, 10)),
-        };
-    }
-
     fn analyzeExpression(
         self: *FunctionAnalyzer,
         expression: Ast.Expression,
@@ -466,6 +456,16 @@ const FunctionAnalyzer = struct {
 
     fn popScope(self: *FunctionAnalyzer) void {
         _ = self.scopes.pop();
+    }
+
+    fn parseInt(integer_str: []const u8, ty: Type) !u64 {
+        return switch (ty) {
+            .u8 => @intCast(u64, try std.fmt.parseInt(u8, integer_str, 10)),
+            .u32 => @intCast(u64, try std.fmt.parseInt(u32, integer_str, 10)),
+            .u64 => @intCast(u64, try std.fmt.parseInt(u64, integer_str, 10)),
+            .i32 => @bitCast(u64, @intCast(i64, try std.fmt.parseInt(i32, integer_str, 10))),
+            .i64 => @bitCast(u64, try std.fmt.parseInt(i64, integer_str, 10)),
+        };
     }
 };
 

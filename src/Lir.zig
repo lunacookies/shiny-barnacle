@@ -264,7 +264,6 @@ const FunctionAnalyzer = struct {
         expected_type_opt: ?Type,
     ) !Type {
         if (expected_type_opt) |expected_type| {
-            // There's probably a nicer way to do this, but I couldn't find how to get it to unroll the union(enum)
             const integer = parseInt(integer_str, expected_type) catch {
                 self.emitError(
                     range,

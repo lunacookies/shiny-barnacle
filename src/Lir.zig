@@ -86,16 +86,6 @@ pub const Type = union(enum) {
         return std.meta.eql(a, b);
     }
 
-    pub fn toZigType(comptime a: Type) type {
-        return switch (a) {
-            .u8 => u8,
-            .u32 => u32,
-            .u64 => u64,
-            .i32 => i32,
-            .i64 => i64,
-        };
-    }
-
     /// Returns whether it is possible to implicitly cast an `a` to a `b`
     pub fn isSubtype(a: Type, b: Type) bool {
         if (isEqual(a, b)) return true;
@@ -110,7 +100,7 @@ pub const Type = union(enum) {
         return a.size() < b.size() and (b.isSigned() or !a.isSigned());
     }
 
-    fn format(
+    pub fn format(
         self: Type,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
@@ -119,9 +109,13 @@ pub const Type = union(enum) {
         _ = fmt;
         _ = options;
 
-        switch (self) {
-            .i32 => try writer.writeAll("i32"),
-        }
+        try switch (self) {
+            .i32 => writer.writeAll("i32"),
+            .i64 => writer.writeAll("i64"),
+            .u32 => writer.writeAll("u32"),
+            .u64 => writer.writeAll("u64"),
+            .u8 => writer.writeAll("u8"),
+        };
     }
 };
 
@@ -479,8 +473,7 @@ const PrettyPrintContext = struct {
         self: *PrettyPrintContext,
         instruction: Instruction,
     ) Error!void {
-        try self.printType(instruction.ty);
-        try self.writer.writeByte('\t');
+        try self.writer.print("{}\t", .{instruction.ty});
         switch (instruction.data) {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
             .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
@@ -502,21 +495,8 @@ const PrettyPrintContext = struct {
             .ge => try self.writer.writeAll("ge"),
             .eq => try self.writer.writeAll("eq"),
             .ne => try self.writer.writeAll("ne"),
-            .cast => |ty| {
-                try self.writer.writeAll("cast\t");
-                try self.printType(ty);
-            },
+            .cast => |ty| try self.writer.print("cast\t{}", .{ty}),
         }
-    }
-
-    fn printType(self: *PrettyPrintContext, ty: Lir.Type) Error!void {
-        try switch (ty) {
-            .i32 => self.writer.writeAll("i32"),
-            .i64 => self.writer.writeAll("i64"),
-            .u32 => self.writer.writeAll("u32"),
-            .u64 => self.writer.writeAll("u64"),
-            .u8 => self.writer.writeAll("u8"),
-        };
     }
 
     fn newline(self: *PrettyPrintContext) Error!void {

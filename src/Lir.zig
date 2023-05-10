@@ -195,16 +195,10 @@ const FunctionAnalyzer = struct {
 
     fn analyzeStatement(self: *FunctionAnalyzer, statement: Ast.Statement) !void {
         switch (statement.data) {
-            .local_declaration => |ld| {
-                const expected_type = self.analyzeType(ld.ty);
-                const actual_type = try self.analyzeExpression(ld.value, expected_type);
-                // self.ensureTypesMatch(expected_type, actual_type, statement.range);
-                std.debug.assert(actual_type.isEqual(expected_type));
-
-                const local_index = try self.createLocal(ld.name, actual_type);
-                const i = .{ .lst = local_index };
-                try self.pushInstruction(i, expected_type, statement.range);
-            },
+            .local_declaration => |ld| return self.analyzeLocalDeclaration(
+                ld,
+                statement.range,
+            ),
 
             .return_ => |return_| {
                 _ = try self.analyzeExpression(return_.value, .i32);
@@ -219,6 +213,27 @@ const FunctionAnalyzer = struct {
                 self.popScope();
             },
         }
+    }
+
+    fn analyzeLocalDeclaration(
+        self: *FunctionAnalyzer,
+        local_declaration: Ast.Statement.LocalDeclaration,
+        range: TextRange,
+    ) !void {
+        const expected_type = self.analyzeType(local_declaration.ty);
+        const actual_type = try self.analyzeExpression(
+            local_declaration.value,
+            expected_type,
+        );
+        std.debug.assert(actual_type.isEqual(expected_type));
+
+        const local_index = try self.createLocal(
+            local_declaration.name,
+            actual_type,
+        );
+
+        const instruction = .{ .lst = local_index };
+        try self.pushInstruction(instruction, expected_type, range);
     }
 
     fn analyzeExpression(

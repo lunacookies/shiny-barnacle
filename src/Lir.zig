@@ -392,21 +392,6 @@ const FunctionAnalyzer = struct {
         );
     }
 
-    fn ensureTypesMatch(
-        self: *FunctionAnalyzer,
-        expected: Type,
-        actual: Type,
-        range: TextRange,
-    ) void {
-        if (std.meta.eql(expected, actual)) return;
-
-        self.emitError(
-            range,
-            "expected type “{}” but found “{}”\n",
-            .{ expected, actual },
-        );
-    }
-
     fn emitError(
         self: *const FunctionAnalyzer,
         range: TextRange,
@@ -419,19 +404,6 @@ const FunctionAnalyzer = struct {
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
         std.os.exit(92);
-    }
-
-    fn pushUntypedInstruction(
-        self: *FunctionAnalyzer,
-        data: Instruction.Data,
-        range: TextRange,
-    ) !void {
-        const instruction = .{
-            .data = data,
-            .ty = undefined,
-            .range = range,
-        };
-        try self.body.instructions.append(instruction);
     }
 
     fn pushInstruction(

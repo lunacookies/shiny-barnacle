@@ -231,63 +231,110 @@ const FunctionAnalyzer = struct {
         };
     }
 
-    fn analyzeExpression(self: *FunctionAnalyzer, expression: Ast.Expression, expected_type_opt: ?Type) !Type {
+    fn analyzeExpression(
+        self: *FunctionAnalyzer,
+        expression: Ast.Expression,
+        expected_type_opt: ?Type,
+    ) !Type {
         switch (expression.data) {
-            .integer => |integer_str| {
-                if (expected_type_opt) |expected_type| {
-                    // There's probably a nicer way to do this, but I couldn't find how to get it to unroll the union(enum)
-                    const integer = parseInt(integer_str, expected_type) catch
-                        self.emitError(expression.range, "integer “{s}” out of range for type “{}”", .{ integer_str, expected_type });
-                    const i = .{ .push = integer };
-                    try self.pushInstruction(i, expected_type, expression.range);
-                    return expected_type;
-                } else {
-                    self.emitError(expression.range, "cannot infer type of integer", .{});
-                }
-            },
+            .integer => |integer_str| return self.analyzeInteger(
+                integer_str,
+                expression.range,
+                expected_type_opt,
+            ),
 
-            .name => |name| {
-                const scopeEntry = self.lookupLocal(name, expression.range);
-                try self.pushInstruction(.{ .lld = scopeEntry.index }, scopeEntry.ty, expression.range);
-                const castedTy = try self.checkAndCast(scopeEntry.ty, expected_type_opt, expression.range);
-                return castedTy;
-            },
+            .name => |name| return self.analyzeName(
+                name,
+                expression.range,
+                expected_type_opt,
+            ),
 
-            .binary => |binary| {
-                const lhs = binary.lhs.*;
-                const rhs = binary.rhs.*;
-
-                const lhs_type = try self.analyzeExpression(lhs, expected_type_opt);
-                self.ensureTypeNumeric(lhs_type, lhs.range);
-                const rhs_type = try self.analyzeExpression(rhs, lhs_type);
-                std.debug.assert(lhs_type.isEqual(rhs_type));
-                // self.ensureTypeNumeric(rhs_type, rhs.range);
-                // self.ensureTypesMatch(lhs_type, rhs_type, rhs.range);
-                const ty = lhs_type;
-
-                const instruction: Instruction.Data = switch (binary.op) {
-                    .add => .add,
-                    .subtract => .sub,
-                    .multiply => .mul,
-                    .divide => .div,
-                    .modulus => .mod,
-                    .bitwise_or => .or_,
-                    .bitwise_and => .and_,
-                    .xor => .xor,
-                    .shift_left => .shl,
-                    .shift_right => .shr,
-                    .less_than => .lt,
-                    .less_than_equal => .le,
-                    .greater_than => .gt,
-                    .greater_than_equal => .ge,
-                    .equal => .eq,
-                    .not_equal => .ne,
-                };
-                try self.pushInstruction(instruction, ty, expression.range);
-
-                return ty;
-            },
+            .binary => |binary| return self.analyzeBinary(
+                binary,
+                expression.range,
+                expected_type_opt,
+            ),
         }
+    }
+
+    fn analyzeInteger(
+        self: *FunctionAnalyzer,
+        integer_str: []const u8,
+        range: TextRange,
+        expected_type_opt: ?Type,
+    ) !Type {
+        if (expected_type_opt) |expected_type| {
+            // There's probably a nicer way to do this, but I couldn't find how to get it to unroll the union(enum)
+            const integer = parseInt(integer_str, expected_type) catch {
+                self.emitError(
+                    range,
+                    "integer “{s}” out of range for type “{}”",
+                    .{ integer_str, expected_type },
+                );
+            };
+            const i = .{ .push = integer };
+            try self.pushInstruction(i, expected_type, range);
+            return expected_type;
+        }
+
+        self.emitError(range, "cannot infer type of integer", .{});
+    }
+
+    fn analyzeName(
+        self: *FunctionAnalyzer,
+        name: []const u8,
+        range: TextRange,
+        expected_type_opt: ?Type,
+    ) !Type {
+        const scope_entry = self.lookupLocal(name, range);
+        const instruction = .{ .lld = scope_entry.index };
+        try self.pushInstruction(instruction, scope_entry.ty, range);
+        const casted_ty = try self.checkAndCast(
+            scope_entry.ty,
+            expected_type_opt,
+            range,
+        );
+        return casted_ty;
+    }
+
+    fn analyzeBinary(
+        self: *FunctionAnalyzer,
+        binary: Ast.Expression.Binary,
+        range: TextRange,
+        expected_type_opt: ?Type,
+    ) !Type {
+        const lhs = binary.lhs.*;
+        const rhs = binary.rhs.*;
+
+        const ty = blk: {
+            const lhs_type = try self.analyzeExpression(lhs, expected_type_opt);
+            self.ensureTypeNumeric(lhs_type, lhs.range);
+            const rhs_type = try self.analyzeExpression(rhs, lhs_type);
+            std.debug.assert(lhs_type.isEqual(rhs_type));
+            break :blk lhs_type;
+        };
+
+        const instruction: Instruction.Data = switch (binary.op) {
+            .add => .add,
+            .subtract => .sub,
+            .multiply => .mul,
+            .divide => .div,
+            .modulus => .mod,
+            .bitwise_or => .or_,
+            .bitwise_and => .and_,
+            .xor => .xor,
+            .shift_left => .shl,
+            .shift_right => .shr,
+            .less_than => .lt,
+            .less_than_equal => .le,
+            .greater_than => .gt,
+            .greater_than_equal => .ge,
+            .equal => .eq,
+            .not_equal => .ne,
+        };
+        try self.pushInstruction(instruction, ty, range);
+
+        return ty;
     }
 
     fn analyzeType(self: *FunctionAnalyzer, ty: Ast.Type) Type {
@@ -304,10 +351,13 @@ const FunctionAnalyzer = struct {
         name: []const u8,
         ty: Type,
     ) !u32 {
-        const last_scope = &self.scopes.items[self.scopes.items.len - 1];
         const i = @intCast(u32, self.body.local_types.items.len);
-        try last_scope.put(self.allocator, name, ScopeEntry{ .ty = ty, .index = i });
+        const entry = .{ .ty = ty, .index = i };
+
+        const last_scope = &self.scopes.items[self.scopes.items.len - 1];
+        try last_scope.put(self.allocator, name, entry);
         try self.body.local_types.append(ty);
+
         return i;
     }
 

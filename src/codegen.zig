@@ -229,7 +229,7 @@ const CodegenContext = struct {
     }
 
     fn push(self: *CodegenContext) !void {
-        // try self.print("\tpush\trax\n", .{});
+        std.debug.assert(!self.push_queued);
         self.push_queued = true;
         self.depth += 1;
     }

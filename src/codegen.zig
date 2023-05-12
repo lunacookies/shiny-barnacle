@@ -79,12 +79,10 @@ const CodegenContext = struct {
             },
 
             .lst => |local_index| {
-                // const ty = self.body.local_types.items[local_index];
                 try self.storeLocal(instruction.ty, local_index);
             },
 
             .lld => |local_index| {
-                // const ty = self.body.local_types.items[local_index];
                 try self.loadLocal(instruction.ty, local_index);
             },
 

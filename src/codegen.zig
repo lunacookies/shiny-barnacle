@@ -251,7 +251,6 @@ const CodegenContext = struct {
         if (self.push_queued) {
             self.push_queued = false;
             try self.assembly.writer().writeAll("\tpush\trax\n");
-            return;
         }
         try self.assembly.writer().print(fmt, args);
     }

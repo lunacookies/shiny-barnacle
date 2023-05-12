@@ -29,6 +29,7 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
             .depth = 0,
             .function_name = name,
             .local_offsets = local_offsets.items,
+            .stack_size = current_offset,
         };
 
         try context.genFunction();
@@ -44,6 +45,7 @@ const CodegenContext = struct {
     depth: u32,
     function_name: []const u8,
     local_offsets: []const u32,
+    stack_size: u32,
     push_queued: bool = false,
 
     fn genFunction(self: *CodegenContext) !void {
@@ -57,7 +59,7 @@ const CodegenContext = struct {
 
         try self.print("\tpush\trbp\n", .{});
         try self.print("\tmov\trbp, rsp\n", .{});
-        try self.print("\tsub\trsp, {}\n", .{self.local_offsets[self.local_offsets.len - 1]});
+        try self.print("\tsub\trsp, {}\n", .{self.stack_size});
 
         for (self.body.instructions.items) |instruction| {
             try self.genInstruction(instruction);

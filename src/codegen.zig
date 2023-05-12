@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const Lir = @import("Lir.zig");
 
@@ -49,13 +50,16 @@ const CodegenContext = struct {
     push_queued: bool = false,
 
     fn genFunction(self: *CodegenContext) !void {
-        if (std.mem.eql(u8, self.function_name, "main")) {
-            try self.print(".global _main\n", .{});
-            try self.print("_main:\n", .{});
+        switch (builtin.os.tag) {
+            .macos => {
+                try self.print(".global _{s}\n", .{self.function_name});
+                try self.print("_{s}:\n", .{self.function_name});
+            },
+            else => {
+                try self.print(".global {s}\n", .{self.function_name});
+                try self.print("{s}:\n", .{self.function_name});
+            },
         }
-
-        try self.print(".global {s}\n", .{self.function_name});
-        try self.print("{s}:\n", .{self.function_name});
 
         try self.print("\tpush\trbp\n", .{});
         try self.print("\tmov\trbp, rsp\n", .{});

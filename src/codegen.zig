@@ -74,7 +74,7 @@ const CodegenContext = struct {
     fn genInstruction(self: *CodegenContext, instruction: Lir.Instruction) !void {
         switch (instruction.data) {
             .push => |value| {
-                try self.print("\tmov\trax, {}\n", .{value});
+                try self.print("\tmov\t{s}, {}\n", .{ getSizedRax(instruction.ty), value });
                 try self.push();
             },
 

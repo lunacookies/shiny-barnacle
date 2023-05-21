@@ -221,6 +221,8 @@ const FunctionAnalyzer = struct {
 
             .if_ => |if_| return self.analyzeIf(if_, statement.range),
 
+            .while_ => |while_| return self.analyzeWhile(while_, statement.range),
+
             .block => |block| {
                 try self.pushScope();
                 for (block.statements.items) |s| {
@@ -285,6 +287,31 @@ const FunctionAnalyzer = struct {
 
         self.moveLabelToCurrent(false_branch_label);
         try self.analyzeStatement(false_branch.*);
+        self.moveLabelToCurrent(end_label);
+    }
+
+    fn analyzeWhile(
+        self: *FunctionAnalyzer,
+        while_: Ast.Statement.While,
+        range: TextRange,
+    ) !void {
+        const start_label = try self.allocateLabel();
+        const end_label = try self.allocateLabel();
+
+        self.moveLabelToCurrent(start_label);
+
+        _ = try self.analyzeExpression(while_.condition, .i32);
+
+        // Exit the loop if the condition was false.
+        var i = Instruction.Data{ .cbz = end_label };
+        try self.pushInstruction(i, .i32, range);
+
+        try self.analyzeStatement(while_.body.*);
+
+        // Unconditionally hop back to the start of the loop.
+        i = Instruction.Data{ .b = start_label };
+        try self.pushInstruction(i, .i32, range);
+
         self.moveLabelToCurrent(end_label);
     }
 

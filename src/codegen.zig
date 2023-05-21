@@ -27,7 +27,6 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
             .assembly = &assembly,
             .input = input,
             .body = body,
-            .depth = 0,
             .function_name = name,
             .local_offsets = local_offsets.items,
             .stack_size = current_offset,
@@ -43,7 +42,6 @@ const CodegenContext = struct {
     assembly: *std.ArrayList(u8),
     input: []const u8,
     body: Lir.Body,
-    depth: u32,
     function_name: []const u8,
     local_offsets: []const u32,
     stack_size: u32,
@@ -65,16 +63,26 @@ const CodegenContext = struct {
         try self.print("\tmov\trbp, rsp\n", .{});
         try self.print("\tsub\trsp, {}\n", .{self.stack_size});
 
-        for (self.body.instructions.items) |instruction| {
+        for (self.body.instructions.items, 0..) |instruction, instruction_index| {
+            for (self.body.labels.items, 0..) |label, label_index| {
+                if (label.instruction_index == instruction_index) {
+                    try self.print(".L.{}:\n", .{label_index});
+                }
+            }
+
             try self.genInstruction(instruction);
+        }
+
+        for (self.body.labels.items, 0..) |label, label_index| {
+            if (label.instruction_index == self.body.instructions.items.len) {
+                try self.print(".L.{}:\n", .{label_index});
+            }
         }
 
         try self.print(".L.return.{s}:\n", .{self.function_name});
         try self.pop("rax");
         try self.print("\tleave\n", .{});
         try self.print("\tret\n", .{});
-
-        std.debug.assert(self.depth == 0);
     }
 
     fn genInstruction(self: *CodegenContext, instruction: Lir.Instruction) !void {
@@ -90,6 +98,16 @@ const CodegenContext = struct {
 
             .lld => |local_index| {
                 try self.loadLocal(instruction.ty, local_index);
+            },
+
+            .b => |label| {
+                try self.print("\tjmp\t.L.{}\n", .{label.index});
+            },
+
+            .cbz => |label| {
+                try self.pop("rax");
+                try self.print("\tcmp\trax, 0\n", .{});
+                try self.print("\tje\t.L.{}\n", .{label.index});
             },
 
             .ret => try self.print("\tjmp\t.L.return.{s}\n", .{self.function_name}),
@@ -235,11 +253,9 @@ const CodegenContext = struct {
     fn push(self: *CodegenContext) !void {
         std.debug.assert(!self.push_queued);
         self.push_queued = true;
-        self.depth += 1;
     }
 
     fn pop(self: *CodegenContext, register: []const u8) !void {
-        self.depth -= 1;
         if (self.push_queued and std.mem.eql(u8, register, "rax")) {
             self.push_queued = false;
             return;

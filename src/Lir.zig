@@ -11,6 +11,7 @@ bodies: std.StringHashMap(Body),
 pub const Body = struct {
     instructions: std.ArrayList(Instruction),
     local_types: std.ArrayList(Type),
+    labels: std.ArrayList(Label),
 };
 
 // At some point this may need to change, when types get more complex
@@ -28,6 +29,8 @@ pub const Instruction = struct {
         push: u64,
         lst: u32,
         lld: u32,
+        b: LabelId,
+        cbz: LabelId,
         ret,
         add,
         sub,
@@ -48,6 +51,14 @@ pub const Instruction = struct {
         /// Cast from this type to the return type given by the IRType
         cast: Type,
     };
+};
+
+pub const LabelId = struct {
+    index: u32,
+};
+
+pub const Label = struct {
+    instruction_index: u32,
 };
 
 pub const Type = union(enum) {
@@ -162,6 +173,7 @@ const Analyzer = struct {
 const FunctionAnalyzer = struct {
     body: Body,
     scopes: std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)),
+    next_label_id: LabelId,
     file_index: indexer.FileIndex,
     input: []const u8,
     allocator: Allocator,
@@ -176,8 +188,10 @@ const FunctionAnalyzer = struct {
             .body = .{
                 .instructions = std.ArrayList(Instruction).init(a),
                 .local_types = std.ArrayList(Type).init(a),
+                .labels = std.ArrayList(Label).init(a),
             },
             .scopes = std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)).init(a),
+            .next_label_id = .{ .index = 0 },
             .file_index = file_index,
             .input = input,
             .allocator = a,
@@ -204,6 +218,8 @@ const FunctionAnalyzer = struct {
                 _ = try self.analyzeExpression(return_.value, .i32);
                 try self.pushInstruction(.ret, .i32, statement.range);
             },
+
+            .if_ => |if_| return self.analyzeIf(if_, statement.range),
 
             .block => |block| {
                 try self.pushScope();
@@ -234,6 +250,42 @@ const FunctionAnalyzer = struct {
 
         const instruction = .{ .lst = local_index };
         try self.pushInstruction(instruction, expected_type, range);
+    }
+
+    fn analyzeIf(
+        self: *FunctionAnalyzer,
+        if_: Ast.Statement.If,
+        range: TextRange,
+    ) !void {
+        _ = try self.analyzeExpression(if_.condition, .i32);
+
+        const false_branch = if (if_.false_branch) |false_branch| blk: {
+            break :blk false_branch;
+        } else {
+            const end_label = try self.allocateLabel();
+            var i = Instruction.Data{ .cbz = end_label };
+            try self.pushInstruction(i, .i32, range);
+
+            try self.analyzeStatement(if_.true_branch.*);
+
+            self.moveLabelToCurrent(end_label);
+
+            return;
+        };
+
+        const false_branch_label = try self.allocateLabel();
+        var i = Instruction.Data{ .cbz = false_branch_label };
+        try self.pushInstruction(i, .i32, range);
+
+        try self.analyzeStatement(if_.true_branch.*);
+
+        const end_label = try self.allocateLabel();
+        i = .{ .b = end_label };
+        try self.pushInstruction(i, .i32, range);
+
+        self.moveLabelToCurrent(false_branch_label);
+        try self.analyzeStatement(false_branch.*);
+        self.moveLabelToCurrent(end_label);
     }
 
     fn analyzeExpression(
@@ -406,6 +458,20 @@ const FunctionAnalyzer = struct {
         std.os.exit(92);
     }
 
+    fn allocateLabel(self: *FunctionAnalyzer) !LabelId {
+        const id = self.next_label_id;
+        self.next_label_id.index += 1;
+        try self.body.labels.append(.{
+            .instruction_index = std.math.maxInt(u32),
+        });
+        return id;
+    }
+
+    fn moveLabelToCurrent(self: *FunctionAnalyzer, label_id: LabelId) void {
+        const label = &self.body.labels.items[label_id.index];
+        label.instruction_index = @intCast(u32, self.body.instructions.items.len);
+    }
+
     fn pushInstruction(
         self: *FunctionAnalyzer,
         data: Instruction.Data,
@@ -504,12 +570,27 @@ const PrettyPrintContext = struct {
             return;
         }
 
-        for (body.instructions.items) |instruction| {
-            try self.writer.writeAll("\n\t");
+        try self.writer.writeByte('\n');
+
+        for (body.instructions.items, 0..) |instruction, instruction_index| {
+            for (body.labels.items, 0..) |label, label_index| {
+                if (label.instruction_index == instruction_index) {
+                    try self.writer.print("l{}:\n", .{label_index});
+                }
+            }
+
+            try self.writer.writeByte('\t');
             try self.printInstruction(instruction);
+            try self.writer.writeByte('\n');
         }
 
-        try self.writer.writeAll("\n}");
+        for (body.labels.items, 0..) |label, label_index| {
+            if (label.instruction_index == body.instructions.items.len) {
+                try self.writer.print("l{}:\n", .{label_index});
+            }
+        }
+
+        try self.writer.writeByte('}');
     }
 
     fn printInstruction(
@@ -521,6 +602,8 @@ const PrettyPrintContext = struct {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
             .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
             .lld => |local_index| try self.writer.print("lld\t{}", .{local_index}),
+            .b => |label| try self.writer.print("b\tl{}", .{label.index}),
+            .cbz => |label| try self.writer.print("cbz\tl{}", .{label.index}),
             .ret => try self.writer.writeAll("ret"),
             .add => try self.writer.writeAll("add"),
             .sub => try self.writer.writeAll("sub"),

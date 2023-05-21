@@ -29,6 +29,7 @@ pub const Statement = struct {
     pub const Data = union(enum) {
         local_declaration: LocalDeclaration,
         return_: Return,
+        if_: If,
         block: Block,
     };
 
@@ -40,6 +41,12 @@ pub const Statement = struct {
 
     pub const Return = struct {
         value: Ast.Expression,
+    };
+
+    pub const If = struct {
+        condition: Ast.Expression,
+        true_branch: *Ast.Statement,
+        false_branch: ?*Ast.Statement,
     };
 
     pub const Block = struct {
@@ -137,6 +144,7 @@ const PrettyPrintContext = struct {
         try switch (statement.data) {
             .local_declaration => |ld| self.printLocalDeclaration(ld),
             .return_ => |return_| self.printReturn(return_),
+            .if_ => |if_| self.printIf(if_),
             .block => |block| self.printBlock(block),
         };
     }
@@ -157,6 +165,17 @@ const PrettyPrintContext = struct {
     ) Error!void {
         try self.writer.writeAll("return ");
         try self.printExpression(return_.value);
+    }
+
+    fn printIf(self: *PrettyPrintContext, if_: Ast.Statement.If) Error!void {
+        try self.writer.writeAll("if ");
+        try self.printExpression(if_.condition);
+        try self.writer.writeAll(" ");
+        try self.printStatement(if_.true_branch.*);
+        if (if_.false_branch) |false_branch| {
+            try self.writer.writeAll(" else ");
+            try self.printStatement(false_branch.*);
+        }
     }
 
     fn printBlock(self: *PrettyPrintContext, block: Ast.Statement.Block) Error!void {

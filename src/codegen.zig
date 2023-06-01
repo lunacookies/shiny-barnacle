@@ -64,7 +64,7 @@ const CodegenContext = struct {
         }
 
         try self.print(".L.return.{s}:\n", .{self.function_name});
-        try self.pop("rax");
+        try self.popRAX();
         try self.print("\tleave\n", .{});
         try self.print("\tret\n", .{});
 
@@ -113,7 +113,7 @@ const CodegenContext = struct {
     }
 
     fn genCast(self: *@This(), src_ty: Lir.IRType, dest_ty: Lir.IRType) !void {
-        try self.pop("rax");
+        try self.popRAX();
         if (dest_ty.isSigned()) {
             try self.print("\tmovsx\t{s}, {s}\n", .{ getSizedRax(dest_ty), getSizedRax(src_ty) });
         } else {
@@ -124,7 +124,7 @@ const CodegenContext = struct {
 
     fn genBinary(self: *CodegenContext, instruction: Lir.Instruction) !void {
         try self.pop("rdi"); // rhs
-        try self.pop("rax"); // lhs
+        try self.popRAX(); // lhs
 
         const ty = instruction.ty;
 
@@ -217,7 +217,7 @@ const CodegenContext = struct {
     }
 
     fn storeLocal(self: *CodegenContext, ty: Lir.Type, local_index: u32) !void {
-        try self.pop("rax");
+        try self.popRAX();
         const reg = getSizedRax(ty);
         try self.print("\tmov\t[rbp - {}], {s}\n", .{ self.local_offsets[local_index], reg });
     }
@@ -229,16 +229,25 @@ const CodegenContext = struct {
     }
 
     fn push(self: *CodegenContext) !void {
-        // try self.print("\tpush\trax\n", .{});
+        if (self.push_queued) try self.print("\tpush\trax\n", .{});
         self.push_queued = true;
         self.depth += 1;
     }
 
-    fn pop(self: *CodegenContext, register: []const u8) !void {
+    fn popRAX(self: *CodegenContext) !void {
         self.depth -= 1;
-        if (self.push_queued and std.mem.eql(u8, register, "rax")) {
+        if (self.push_queued) {
             self.push_queued = false;
             return;
+        }
+        try self.print("\tpop\trax\n", .{});
+    }
+
+    fn pop(self: *CodegenContext, register: []const u8) !void {
+        self.depth -= 1;
+        if (self.push_queued) {
+            self.push_queued = false;
+            try self.assembly.writer().writeAll("\tpush\trax\n");
         }
         try self.print("\tpop\t{s}\n", .{register});
     }
@@ -251,7 +260,6 @@ const CodegenContext = struct {
         if (self.push_queued) {
             self.push_queued = false;
             try self.assembly.writer().writeAll("\tpush\trax\n");
-            return;
         }
         try self.assembly.writer().print(fmt, args);
     }

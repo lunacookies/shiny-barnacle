@@ -180,7 +180,7 @@ const Lexer = struct {
                     const end = self.cursor;
                     try self.emit(.identifier, start, end);
                 },
-
+                0 => break,
                 else => |c| self.emitError(c),
             }
         }

@@ -34,15 +34,26 @@ pub fn main() !void {
     _ = args.skip();
 
     if (args.next()) |fname| {
-        const file = try std.fs.cwd().openFile(fname, .{});
-        const source = try file.readToEndAlloc(allocator, 1 << 28);
+        const file = std.fs.cwd().openFile(fname, .{}) catch |e| {
+            if (e == error.FileNotFound) {
+                std.debug.print("File not found: {s}\n", .{fname});
+                return;
+            } else return e;
+        };
+        const stat = try file.stat();
+        const source = try file.readToEndAllocOptions(
+            allocator,
+            1 << 28,
+            stat.size,
+            @alignOf(u8),
+            0,
+        );
         defer allocator.free(source);
 
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
 
-        // The source file includes the null terminator
-        var assembly = try compile(arena.allocator(), source[0 .. source.len - 2], true);
+        var assembly = try compile(arena.allocator(), source, true);
         try assemble(allocator, assembly, "out.s", "out", target);
     } else {
         while (true) {

@@ -25,6 +25,9 @@ pub const Token = struct {
 
 pub const TokenKind = enum(u8) {
     func_kw,
+    if_kw,
+    else_kw,
+    while_kw,
     let_kw,
     var_kw,
     and_kw,
@@ -86,6 +89,9 @@ const Lexer = struct {
 
     const keywords = std.ComptimeStringMap(TokenKind, .{
         .{ "func", .func_kw },
+        .{ "if", .if_kw },
+        .{ "else", .else_kw },
+        .{ "while", .while_kw },
         .{ "let", .let_kw },
         .{ "var", .var_kw },
         .{ "return", .return_kw },

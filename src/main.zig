@@ -17,6 +17,15 @@ pub fn main() !void {
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
+    const target = switch (builtin.os.tag) {
+        .macos => "x86_64-darwin",
+        .linux => "x86_64-linux",
+        else => {
+            try stdout.writeAll("unsupported architecture");
+            std.os.exit(92);
+        },
+    };
+
     while (true) {
         try stdout.writeAll("> ");
         try stdin.readUntilDelimiterArrayList(&input, '\n', 512);
@@ -48,7 +57,14 @@ pub fn main() !void {
         var assembly_file = try std.fs.cwd().createFile("out.s", .{});
         try assembly_file.writeAll(assembly);
 
-        var clang = std.ChildProcess.init(&[_][]const u8{ "clang", "-o", "out", "out.s" }, allocator);
+        var clang = std.ChildProcess.init(&[_][]const u8{
+            "clang",
+            "-target",
+            target,
+            "-o",
+            "out",
+            "out.s",
+        }, allocator);
 
         _ = try clang.spawnAndWait();
     }

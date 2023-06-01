@@ -73,6 +73,8 @@ const Parser = struct {
         switch (self.current()) {
             .let_kw => return self.parseLocalDeclaration(a),
             .return_kw => return self.parseReturn(a),
+            .if_kw => return self.parseIf(a),
+            .while_kw => return self.parseWhile(a),
             .l_brace => return self.parseBlock(a),
             else => self.emitError("expected statement", .{}),
         }
@@ -110,6 +112,59 @@ const Parser = struct {
         return .{
             .data = .{
                 .return_ = .{ .value = value },
+            },
+            .range = .{ .start = start, .end = end },
+        };
+    }
+
+    fn parseIf(self: *Parser, a: Allocator) !Ast.Statement {
+        const start = self.inputIndex();
+        self.bump(.if_kw);
+
+        const condition = try self.parseExpression(a);
+
+        const true_branch = &(try a.alloc(Ast.Statement, 1))[0];
+        true_branch.* = try self.parseBlock(a);
+
+        var false_branch: ?*Ast.Statement = null;
+        if (self.current() == .else_kw) {
+            self.bump(.else_kw);
+            const p = &(try a.alloc(Ast.Statement, 1))[0];
+            p.* = try self.parseBlock(a);
+            false_branch = p;
+        }
+
+        const end = self.inputIndex();
+
+        return .{
+            .data = .{
+                .if_ = .{
+                    .condition = condition,
+                    .true_branch = true_branch,
+                    .false_branch = false_branch,
+                },
+            },
+            .range = .{ .start = start, .end = end },
+        };
+    }
+
+    fn parseWhile(self: *Parser, a: Allocator) !Ast.Statement {
+        const start = self.inputIndex();
+        self.bump(.while_kw);
+
+        const condition = try self.parseExpression(a);
+
+        const body = &(try a.alloc(Ast.Statement, 1))[0];
+        body.* = try self.parseBlock(a);
+
+        const end = self.inputIndex();
+
+        return .{
+            .data = .{
+                .while_ = .{
+                    .condition = condition,
+                    .body = body,
+                },
             },
             .range = .{ .start = start, .end = end },
         };

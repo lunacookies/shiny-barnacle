@@ -181,7 +181,7 @@ const Lexer = struct {
                     try self.emit(.identifier, start, end);
                 },
 
-                else => self.emitError(),
+                else => |c| self.emitError(c),
             }
         }
 
@@ -237,9 +237,9 @@ const Lexer = struct {
         try self.tokens.append(token);
     }
 
-    fn emitError(self: *const Lexer) noreturn {
+    fn emitError(self: *const Lexer, c: u8) noreturn {
         const line_col = utils.indexToLineCol(self.input, self.cursor);
-        std.debug.print("{}: error: invalid token\n", .{line_col});
+        std.debug.print("{}: error: invalid token (code: {})\n", .{ line_col, c });
         std.os.exit(92);
     }
 

@@ -123,13 +123,13 @@ const Parser = struct {
 
         const condition = try self.parseExpression(a);
 
-        const true_branch = &(try a.alloc(Ast.Statement, 1))[0];
+        const true_branch = try a.create(Ast.Statement);
         true_branch.* = try self.parseBlock(a);
 
         var false_branch: ?*Ast.Statement = null;
         if (self.current() == .else_kw) {
             self.bump(.else_kw);
-            const p = &(try a.alloc(Ast.Statement, 1))[0];
+            const p = try a.create(Ast.Statement);
             p.* = try self.parseBlock(a);
             false_branch = p;
         }
@@ -154,7 +154,7 @@ const Parser = struct {
 
         const condition = try self.parseExpression(a);
 
-        const body = &(try a.alloc(Ast.Statement, 1))[0];
+        const body = try a.create(Ast.Statement);
         body.* = try self.parseBlock(a);
 
         const end = self.inputIndex();

@@ -15,6 +15,7 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
 
         var local_offsets = try std.ArrayList(u32)
             .initCapacity(a, body.local_types.items.len);
+        defer local_offsets.deinit();
 
         var current_offset: u32 = 0;
         for (body.local_types.items) |ty| {
@@ -35,7 +36,7 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
         try context.genFunction();
     }
 
-    return assembly.items;
+    return assembly.toOwnedSlice();
 }
 
 const CodegenContext = struct {
@@ -256,7 +257,6 @@ const CodegenContext = struct {
     }
 
     fn popRAX(self: *CodegenContext) !void {
-        self.depth -= 1;
         if (self.push_queued) {
             self.push_queued = false;
             return;
@@ -265,7 +265,6 @@ const CodegenContext = struct {
     }
 
     fn pop(self: *CodegenContext, register: []const u8) !void {
-        self.depth -= 1;
         if (self.push_queued) {
             self.push_queued = false;
             try self.assembly.writer().writeAll("\tpush\trax\n");

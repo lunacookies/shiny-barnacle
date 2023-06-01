@@ -164,6 +164,7 @@ const Analyzer = struct {
         std.debug.assert(!self.lir.bodies.contains(name));
 
         var function_analyzer = FunctionAnalyzer.init(a, self.file_index, self.input);
+        defer function_analyzer.deinint();
         try function_analyzer.analyzeFunction(function);
 
         try self.lir.bodies.put(name, function_analyzer.body);
@@ -196,6 +197,14 @@ const FunctionAnalyzer = struct {
             .input = input,
             .allocator = a,
         };
+    }
+
+    /// Will not free the `body`
+    pub fn deinint(self: *@This()) void {
+        for (self.scopes.items) |*scope| {
+            scope.deinit(self.allocator);
+        }
+        self.scopes.deinit();
     }
 
     fn analyzeFunction(

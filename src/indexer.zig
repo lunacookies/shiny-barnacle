@@ -13,7 +13,8 @@ pub fn indexFile(
 
     for (ast.items.items) |ast_item| {
         const item_data = switch (ast_item.data) {
-            .function => .{ .function = .{} },
+            .function => Item.Data{ .function = .{} },
+            .strukt => |strukt| try lowerStruct(strukt, a),
         };
 
         const item = .{
@@ -63,10 +64,46 @@ pub const Item = struct {
 
     pub const Data = union(enum) {
         function: Function,
+        strukt: Struct,
     };
 
     pub const Function = struct {};
+
+    pub const Struct = struct {
+        fields: std.ArrayList(Field),
+
+        pub const Field = struct {
+            name: []const u8,
+            ty: Type,
+        };
+    };
 };
+
+pub const Type = struct {
+    name: []const u8,
+};
+
+fn lowerStruct(strukt: Ast.Item.Struct, a: Allocator) !Item.Data {
+    var fields = std.ArrayList(Item.Struct.Field).init(a);
+
+    for (strukt.fields.items) |ast_field| {
+        const field = .{
+            .name = ast_field.name,
+            .ty = lowerType(ast_field.ty),
+        };
+        try fields.append(field);
+    }
+
+    return .{
+        .strukt = .{
+            .fields = fields,
+        },
+    };
+}
+
+fn lowerType(ty: Ast.Type) Type {
+    return .{ .name = ty.name };
+}
 
 const pretty_print_buf_size = 1024 * 1024;
 
@@ -90,6 +127,7 @@ const PrettyPrintContext = struct {
     fn printItem(self: *PrettyPrintContext, name: []const u8, item: Item) Error!void {
         try switch (item.data) {
             .function => |function| self.printFunction(name, function),
+            .strukt => |strukt| self.printStrukt(name, strukt),
         };
     }
 
@@ -100,5 +138,23 @@ const PrettyPrintContext = struct {
     ) Error!void {
         _ = function;
         try self.writer.print("func {s}", .{name});
+    }
+
+    fn printStrukt(
+        self: *PrettyPrintContext,
+        name: []const u8,
+        strukt: Item.Struct,
+    ) Error!void {
+        try self.writer.print("struct {s} {{", .{name});
+        for (strukt.fields.items) |field| {
+            try self.writer.print("\n\t{s} ", .{field.name});
+            try self.printType(field.ty);
+            try self.writer.writeByte(',');
+        }
+        try self.writer.writeAll("\n}");
+    }
+
+    fn printType(self: *PrettyPrintContext, ty: Type) Error!void {
+        try self.writer.writeAll(ty.name);
     }
 };

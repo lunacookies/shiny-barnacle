@@ -32,6 +32,7 @@ const Parser = struct {
     fn parseItem(self: *Parser, a: Allocator) !Ast.Item {
         switch (self.current()) {
             .func_kw => return self.parseFunction(a),
+            .struct_kw => return self.parseStruct(a),
             else => self.emitError("expected item", .{}),
         }
     }
@@ -49,6 +50,37 @@ const Parser = struct {
             .name = name,
             .data = .{
                 .function = .{ .body = body },
+            },
+            .range = .{ .start = start, .end = end },
+        };
+    }
+
+    fn parseStruct(self: *Parser, a: Allocator) !Ast.Item {
+        const start = self.inputIndex();
+        self.bump(.struct_kw);
+        const name = self.expectWithText(.identifier);
+
+        var fields = std.ArrayList(Ast.Item.Struct.Field).init(a);
+        self.expect(.l_brace);
+        while (!self.atEof() and self.current() != .r_brace) {
+            const field_name = self.expectWithText(.identifier);
+            const field_type = self.parseType();
+            try fields.append(.{ .name = field_name, .ty = field_type });
+
+            if (self.current() != .r_brace) {
+                self.expect(.comma);
+            }
+        }
+        self.expect(.r_brace);
+
+        const end = self.inputIndex();
+
+        return .{
+            .name = name,
+            .data = .{
+                .strukt = .{
+                    .fields = fields,
+                },
             },
             .range = .{ .start = start, .end = end },
         };

@@ -12,9 +12,19 @@ pub const Item = struct {
 
     pub const Data = union(enum) {
         function: Function,
+        strukt: Struct,
     };
 
     pub const Function = struct { body: Ast.Statement };
+
+    pub const Struct = struct {
+        fields: std.ArrayList(Field),
+
+        pub const Field = struct {
+            name: []const u8,
+            ty: Type,
+        };
+    };
 };
 
 pub const Type = struct {
@@ -130,6 +140,7 @@ const PrettyPrintContext = struct {
     fn printItem(self: *PrettyPrintContext, item: Ast.Item) Error!void {
         try switch (item.data) {
             .function => |function| self.printFunction(item.name, function),
+            .strukt => |strukt| self.printStruct(item.name, strukt),
         };
     }
 
@@ -140,6 +151,20 @@ const PrettyPrintContext = struct {
     ) Error!void {
         try self.writer.print("func {s} ", .{name});
         try self.printStatement(function.body);
+    }
+
+    fn printStruct(
+        self: *PrettyPrintContext,
+        name: []const u8,
+        strukt: Ast.Item.Struct,
+    ) Error!void {
+        try self.writer.print("struct {s} {{", .{name});
+        for (strukt.fields.items) |field| {
+            try self.writer.print("\n\t{s} ", .{field.name});
+            try self.printType(field.ty);
+            try self.writer.writeByte(',');
+        }
+        try self.writer.writeAll("\n}");
     }
 
     fn printType(self: *PrettyPrintContext, ty: Ast.Type) Error!void {

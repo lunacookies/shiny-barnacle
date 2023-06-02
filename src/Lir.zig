@@ -155,6 +155,7 @@ const Analyzer = struct {
         for (ast.items.items) |ast_item| {
             try switch (ast_item.data) {
                 .function => |function| self.analyzeFunction(ast_item.name, function, a),
+                .strukt => {},
             };
         }
     }

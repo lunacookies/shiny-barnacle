@@ -248,20 +248,22 @@ const FunctionAnalyzer = struct {
         local_declaration: Ast.Statement.LocalDeclaration,
         range: TextRange,
     ) !void {
-        const expected_type = self.analyzeType(local_declaration.ty);
-        const actual_type = try self.analyzeExpression(
-            local_declaration.value,
-            expected_type,
-        );
-        std.debug.assert(actual_type.isEqual(expected_type));
+        if (local_declaration.value) |value| {
+            const expected_type = self.analyzeType(local_declaration.ty);
+            const actual_type = try self.analyzeExpression(value, expected_type);
+            std.debug.assert(actual_type.isEqual(expected_type));
 
-        const local_index = try self.createLocal(
-            local_declaration.name,
-            actual_type,
-        );
+            const local_index = try self.createLocal(
+                local_declaration.name,
+                actual_type,
+            );
 
-        const instruction = .{ .lst = local_index };
-        try self.pushInstruction(instruction, expected_type, range);
+            const instruction = .{ .lst = local_index };
+            try self.pushInstruction(instruction, expected_type, range);
+        }
+
+        const ty = self.analyzeType(local_declaration.ty);
+        _ = try self.createLocal(local_declaration.name, ty);
     }
 
     fn analyzeIf(

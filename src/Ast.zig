@@ -48,7 +48,7 @@ pub const Statement = struct {
     pub const LocalDeclaration = struct {
         name: []const u8,
         ty: Ast.Type,
-        value: Ast.Expression,
+        value: ?Ast.Expression,
     };
 
     pub const Return = struct {
@@ -188,8 +188,10 @@ const PrettyPrintContext = struct {
     ) Error!void {
         try self.writer.print("let {s} ", .{local_declaration.name});
         try self.printType(local_declaration.ty);
-        try self.writer.writeAll(" = ");
-        try self.printExpression(local_declaration.value);
+        if (local_declaration.value) |value| {
+            try self.writer.writeAll(" = ");
+            try self.printExpression(value);
+        }
     }
 
     fn printReturn(

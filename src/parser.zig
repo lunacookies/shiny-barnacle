@@ -124,8 +124,12 @@ const Parser = struct {
         self.bump(.let_kw);
         const name = self.bumpWithText(.identifier);
         const ty = self.parseType();
-        self.bump(.equals);
-        const value = try self.parseExpression(a);
+        var value: ?Ast.Expression = null;
+
+        if (self.current() == .equals) {
+            self.bump(.equals);
+            value = try self.parseExpression(a);
+        }
 
         const end = self.inputIndex();
 

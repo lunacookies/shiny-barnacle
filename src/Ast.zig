@@ -23,6 +23,7 @@ pub const Item = struct {
         pub const Field = struct {
             name: []const u8,
             ty: Type,
+            range: TextRange,
         };
     };
 };

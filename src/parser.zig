@@ -63,9 +63,15 @@ const Parser = struct {
         var fields = std.ArrayList(Ast.Item.Struct.Field).init(a);
         self.expect(.l_brace);
         while (!self.atEof() and self.current() != .r_brace) {
+            const field_start = self.inputIndex();
             const field_name = self.expectWithText(.identifier);
             const field_type = self.parseType();
-            try fields.append(.{ .name = field_name, .ty = field_type });
+            const field_end = self.inputIndex();
+            try fields.append(.{
+                .name = field_name,
+                .ty = field_type,
+                .range = .{ .start = field_start, .end = field_end },
+            });
 
             if (self.current() != .r_brace) {
                 self.expect(.comma);

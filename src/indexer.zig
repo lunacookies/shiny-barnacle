@@ -14,7 +14,7 @@ pub fn indexFile(
     for (ast.items.items) |ast_item| {
         const item_data = switch (ast_item.data) {
             .function => Item.Data{ .function = .{} },
-            .strukt => |strukt| try lowerStruct(strukt, a),
+            .strukt => |strukt| try lowerStruct(strukt, input, a),
         };
 
         const item = .{
@@ -70,10 +70,9 @@ pub const Item = struct {
     pub const Function = struct {};
 
     pub const Struct = struct {
-        fields: std.ArrayList(Field),
+        fields: std.StringHashMap(Field),
 
         pub const Field = struct {
-            name: []const u8,
             ty: Type,
         };
     };
@@ -83,15 +82,22 @@ pub const Type = struct {
     name: []const u8,
 };
 
-fn lowerStruct(strukt: Ast.Item.Struct, a: Allocator) !Item.Data {
-    var fields = std.ArrayList(Item.Struct.Field).init(a);
+fn lowerStruct(strukt: Ast.Item.Struct, input: []const u8, a: Allocator) !Item.Data {
+    var fields = std.StringHashMap(Item.Struct.Field).init(a);
 
     for (strukt.fields.items) |ast_field| {
-        const field = .{
-            .name = ast_field.name,
-            .ty = lowerType(ast_field.ty),
-        };
-        try fields.append(field);
+        if (fields.contains(ast_field.name)) {
+            const line_col = utils.indexToLineCol(input, ast_field.range.start);
+
+            std.debug.print(
+                "{}: error: a field called “{s}” has already been defined on this struct\n",
+                .{ line_col, ast_field.name },
+            );
+            std.os.exit(92);
+        }
+
+        const field = .{ .ty = lowerType(ast_field.ty) };
+        try fields.put(ast_field.name, field);
     }
 
     return .{
@@ -146,8 +152,12 @@ const PrettyPrintContext = struct {
         strukt: Item.Struct,
     ) Error!void {
         try self.writer.print("struct {s} {{", .{name});
-        for (strukt.fields.items) |field| {
-            try self.writer.print("\n\t{s} ", .{field.name});
+        var iterator = strukt.fields.iterator();
+        while (iterator.next()) |entry| {
+            const field_name = entry.key_ptr.*;
+            const field = entry.value_ptr.*;
+
+            try self.writer.print("\n\t{s} ", .{field_name});
             try self.printType(field.ty);
             try self.writer.writeByte(',');
         }

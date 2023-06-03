@@ -15,7 +15,17 @@ pub const Item = struct {
         strukt: Struct,
     };
 
-    pub const Function = struct { body: Ast.Statement };
+    pub const Function = struct {
+        body: Ast.Statement,
+        params: []Param,
+        return_type: Type,
+
+        pub const Param = struct {
+            name: []const u8,
+            ty: Type,
+            range: TextRange,
+        };
+    };
 
     pub const Struct = struct {
         fields: std.ArrayList(Field),
@@ -59,7 +69,7 @@ pub const Statement = struct {
     };
 
     pub const Return = struct {
-        value: Ast.Expression,
+        value: ?Ast.Expression,
     };
 
     pub const If = struct {
@@ -228,7 +238,8 @@ const PrettyPrintContext = struct {
         return_: Ast.Statement.Return,
     ) Error!void {
         try self.writer.writeAll("return ");
-        try self.printExpression(return_.value);
+        if (return_.value) |val|
+            try self.printExpression(val);
     }
 
     fn printIf(self: *PrettyPrintContext, if_: Ast.Statement.If) Error!void {

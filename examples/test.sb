@@ -1,4 +1,4 @@
-func main { 
+func main() i32 { 
   let a i32 = 10 + 20 * 30 
   return a 
 }

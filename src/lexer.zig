@@ -81,6 +81,7 @@ pub const TokenKind = enum(u8) {
         const name = @tagName(self);
         try writer.writeAll(name);
     }
+
 };
 
 const Lexer = struct {

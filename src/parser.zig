@@ -9,6 +9,15 @@ pub fn parse(input: []const u8, tokens: []const lexer.Token, a: Allocator) !Ast 
     return parser.parse(a);
 }
 
+const expression_first_set = std.EnumSet(lexer.TokenKind)
+    .initMany(&[_]lexer.TokenKind{
+    .identifier,
+    .integer,
+    .ampersand,
+    .asterisk,
+    .l_paren,
+});
+
 const Parser = struct {
     input: []const u8,
     tokens: []const lexer.Token,
@@ -42,6 +51,30 @@ const Parser = struct {
 
         self.bump(.func_kw);
         const name = self.expectWithText(.identifier);
+        self.expect(.l_paren);
+
+        var params = std.ArrayListUnmanaged(Ast.Item.Function.Param){};
+
+        while (!self.atEof() and self.current() != .r_paren) {
+            const param_start = self.inputIndex();
+            const param_name = self.expectWithText(.identifier);
+            self.expect(.colon);
+            const param_ty = self.parseType();
+            const param_end = self.inputIndex();
+            if (self.current() == .r_paren) break;
+            self.expect(.comma);
+
+            try params.append(a, .{
+                .ty = param_ty,
+                .name = param_name,
+                .range = .{ .start = param_start, .end = param_end },
+            });
+        }
+
+        self.expect(.r_paren);
+
+        const return_type = self.parseType();
+
         const body = try self.parseBlock(a);
 
         const end = self.inputIndex();
@@ -49,7 +82,11 @@ const Parser = struct {
         return .{
             .name = name,
             .data = .{
-                .function = .{ .body = body },
+                .function = .{
+                    .body = body,
+                    .params = try params.toOwnedSlice(a),
+                    .return_type = return_type,
+                },
             },
             .range = .{ .start = start, .end = end },
         };
@@ -174,7 +211,11 @@ const Parser = struct {
     fn parseReturn(self: *Parser, a: Allocator) !Ast.Statement {
         const start = self.inputIndex();
         self.bump(.return_kw);
-        const value = try self.parseExpression(a);
+
+        const value = if (expression_first_set.contains(self.current()))
+            try self.parseExpression(a)
+        else
+            null;
         const end = self.inputIndex();
 
         return .{
@@ -382,6 +423,7 @@ const Parser = struct {
     }
 
     fn parseLhs(self: *Parser, a: Allocator) !Ast.Expression {
+        std.debug.assert(expression_first_set.contains(self.current()));
         switch (self.current()) {
             .integer => {
                 const start = self.inputIndex();

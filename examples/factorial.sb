@@ -1,5 +1,5 @@
 
-func main {
+func main() i32 {
   let result i32 = 1
   let i i32 = 5
   while i > 0 {

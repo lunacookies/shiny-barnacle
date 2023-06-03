@@ -12,6 +12,8 @@ pub const Body = struct {
     instructions: std.ArrayList(Instruction),
     local_types: std.ArrayList(Type),
     labels: std.ArrayList(Label),
+    params: []IRType,
+    return_type: IRType,
 };
 
 // At some point this may need to change, when types get more complex
@@ -95,14 +97,16 @@ pub const Type = union(enum) {
     u64,
     u8,
     pointer: *Type,
+    void,
 
     pub fn size(self: Type) u32 {
-        switch (self) {
-            .i32, .u32 => return 4,
-            .i64, .u64 => return 8,
-            .u8 => return 1,
-            .pointer => return 8,
-        }
+        return switch (self) {
+            .i32, .u32 => 4,
+            .i64, .u64 => 8,
+            .u8 => 1,
+            .pointer => 8,
+            .void => 0,
+        };
     }
 
     pub fn alignment(self: Type) u32 {
@@ -113,28 +117,30 @@ pub const Type = union(enum) {
         switch (self) {
             .i32, .i64 => return true,
             .u32, .u64, .u8 => return false,
-            .pointer => return false,
+            .void, .pointer => return false,
         }
     }
 
     pub fn isNumeric(self: Type) bool {
         return switch (self) {
             .u32, .u64, .i32, .i64, .u8 => true,
-            .pointer => false,
+            .void, .pointer => false,
         };
     }
 
     pub fn isEqual(a: Type, b: Type) bool {
         return switch (a) {
-            .i32 => b == .i32,
-            .i64 => b == .i64,
-            .u32 => b == .u32,
-            .u64 => b == .u64,
-            .u8 => b == .u8,
             .pointer => |a_child_type| switch (b) {
                 .pointer => |b_child_type| a_child_type.isEqual(b_child_type.*),
                 else => false,
             },
+            .u8,
+            .u32,
+            .u64,
+            .i32,
+            .i64,
+            .void,
+            => std.meta.eql(a, b),
         };
     }
 
@@ -162,12 +168,14 @@ pub const Type = union(enum) {
         _ = options;
 
         try switch (self) {
-            .i32 => writer.writeAll("i32"),
-            .i64 => writer.writeAll("i64"),
-            .u32 => writer.writeAll("u32"),
-            .u64 => writer.writeAll("u64"),
-            .u8 => writer.writeAll("u8"),
             .pointer => |child_type| writer.print("*{}", .{child_type}),
+            .i32,
+            .i64,
+            .u32,
+            .u64,
+            .u8,
+            .void,
+            => writer.writeAll(@tagName(self)),
         };
     }
 };
@@ -234,6 +242,8 @@ const FunctionAnalyzer = struct {
                 .instructions = std.ArrayList(Instruction).init(a),
                 .local_types = std.ArrayList(Type).init(a),
                 .labels = std.ArrayList(Label).init(a),
+                .params = undefined,
+                .return_type = undefined,
             },
             .scopes = std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)).init(a),
             .next_label_id = .{ .index = 0 },
@@ -256,6 +266,18 @@ const FunctionAnalyzer = struct {
         function: Ast.Item.Function,
     ) !void {
         try self.pushScope();
+
+        self.body.params = try self.allocator.alloc(Type, function.params.len);
+
+        for (function.params, 0..) |param, i| {
+            const ty = self.analyzeType(param.ty);
+            const j = try self.createLocal(param.name, ty);
+            std.debug.assert(j == i);
+            self.body.params[i] = ty;
+        }
+
+        self.body.return_type = self.analyzeType(function.return_type);
+
         try self.analyzeStatement(function.body);
         self.popScope();
     }
@@ -268,8 +290,9 @@ const FunctionAnalyzer = struct {
             ),
 
             .return_ => |return_| {
-                _ = try self.analyzeExpression(return_.value, .i32);
-                try self.pushInstruction(.ret, .i32, statement.range);
+                if (return_.value) |val|
+                    _ = try self.analyzeExpression(val, self.body.return_type);
+                try self.pushInstruction(.ret, undefined, statement.range);
             },
 
             .if_ => |if_| return self.analyzeIf(if_, statement.range),
@@ -597,6 +620,7 @@ const FunctionAnalyzer = struct {
         if (std.mem.eql(u8, ty.name, "u32")) return .u32;
         if (std.mem.eql(u8, ty.name, "u64")) return .u64;
         if (std.mem.eql(u8, ty.name, "u8")) return .u8;
+        if (std.mem.eql(u8, ty.name, "void")) return .void;
         self.emitError(ty.range, "unknown type", .{});
     }
 
@@ -717,6 +741,7 @@ const FunctionAnalyzer = struct {
             .i32 => @bitCast(u64, @intCast(i64, try std.fmt.parseInt(i32, integer_str, 10))),
             .i64 => @bitCast(u64, try std.fmt.parseInt(i64, integer_str, 10)),
             .pointer => unreachable,
+            .void => unreachable,
         };
     }
 };

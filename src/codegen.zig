@@ -181,7 +181,7 @@ const CodegenContext = struct {
                         try self.print("\txor edx, edx\n", .{});
                         try self.print("\tdiv\trdi\n", .{});
                     },
-                    .pointer => unreachable,
+                    else => unreachable,
                 }
                 if (instruction.data == .mod)
                     try self.print("\tmov\trax, rdx\n", .{});
@@ -258,6 +258,7 @@ const CodegenContext = struct {
             .i64, .u64 => "rax",
             .u8 => "al",
             .pointer => "rax",
+            .void => unreachable,
         };
     }
 
@@ -267,6 +268,7 @@ const CodegenContext = struct {
             .i64, .u64 => "rdi",
             .u8 => "dil",
             .pointer => "rdi",
+            .void => unreachable,
         };
     }
 

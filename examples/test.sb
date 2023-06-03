@@ -1,0 +1,5 @@
+func main { 
+  let a i32 = 10 + 20 * 30 
+  return a 
+}
+

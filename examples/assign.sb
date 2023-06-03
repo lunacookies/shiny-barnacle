@@ -1,0 +1,5 @@
+func main {
+  let a u8 = 10
+  a = 20
+  return a
+}

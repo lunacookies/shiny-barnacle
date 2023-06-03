@@ -1,0 +1,10 @@
+
+func main {
+  let result i32 = 1
+  let i i32 = 5
+  while i > 0 {
+    result = result * i
+    i = i - 1
+  }
+  return result
+}

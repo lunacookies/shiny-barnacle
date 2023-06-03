@@ -386,7 +386,28 @@ const Parser = struct {
                 };
             },
 
-            else => self.emitError("expected expression", .{}),
+            else => {
+                const start = self.inputIndex();
+                const op: Ast.Expression.Unary.Operator = switch (self.current()) {
+                    .asterisk => .dereference,
+                    .ampersand => .address_of,
+                    else => self.emitError("expected expression", .{}),
+                };
+                self.bumpAny(); // eat operator
+                const operand = try self.parseLhs(a);
+                const operand_ptr = try a.create(Ast.Expression);
+                operand_ptr.* = operand;
+                const end = self.inputIndex();
+                return .{
+                    .data = .{
+                        .unary = .{
+                            .op = op,
+                            .operand = operand_ptr,
+                        },
+                    },
+                    .range = .{ .start = start, .end = end },
+                };
+            },
         }
     }
 

@@ -77,8 +77,19 @@ pub const Expression = struct {
 
     pub const Data = union(enum) {
         integer: []const u8,
+        unary: Unary,
         binary: Binary,
         name: []const u8,
+    };
+
+    pub const Unary = struct {
+        operand: *Expression,
+        op: Operator,
+
+        pub const Operator = enum {
+            dereference,
+            address_of,
+        };
     };
 
     pub const Binary = struct {
@@ -241,6 +252,17 @@ const PrettyPrintContext = struct {
         try switch (expression.data) {
             .integer => |integer| self.writer.writeAll(integer),
             .name => |name| self.writer.writeAll(name),
+
+            .unary => |unary| {
+                const op: u8 = switch (unary.op) {
+                    .dereference => '*',
+                    .address_of => '&',
+                };
+                try self.writer.writeByte(op);
+                try self.writer.writeByte('(');
+                try self.printExpression(unary.operand.*);
+                try self.writer.writeByte(')');
+            },
 
             .binary => |binary| {
                 try self.writer.writeByte('(');

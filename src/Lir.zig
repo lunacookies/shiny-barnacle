@@ -27,10 +27,11 @@ pub const Instruction = struct {
 
     pub const Data = union(enum) {
         push: u64,
-        lst: u32,
-        lld: u32,
+        laddr: u32,
         b: LabelId,
         cbz: LabelId,
+        ld,
+        st,
         ret,
         add,
         sub,
@@ -67,12 +68,14 @@ pub const Type = union(enum) {
     u32,
     u64,
     u8,
+    pointer: *Type,
 
     pub fn size(self: Type) u32 {
         switch (self) {
             .i32, .u32 => return 4,
             .i64, .u64 => return 8,
             .u8 => return 1,
+            .pointer => return 8,
         }
     }
 
@@ -84,17 +87,29 @@ pub const Type = union(enum) {
         switch (self) {
             .i32, .i64 => return true,
             .u32, .u64, .u8 => return false,
+            .pointer => return false,
         }
     }
 
     pub fn isNumeric(self: Type) bool {
         return switch (self) {
             .u32, .u64, .i32, .i64, .u8 => true,
+            .pointer => false,
         };
     }
 
     pub fn isEqual(a: Type, b: Type) bool {
-        return std.meta.eql(a, b);
+        return switch (a) {
+            .i32 => b == .i32,
+            .i64 => b == .i64,
+            .u32 => b == .u32,
+            .u64 => b == .u64,
+            .u8 => b == .u8,
+            .pointer => |a_child_type| switch (b) {
+                .pointer => |b_child_type| a_child_type.isEqual(b_child_type.*),
+                else => false,
+            },
+        };
     }
 
     /// Returns whether it is possible to implicitly cast an `a` to a `b`
@@ -126,6 +141,7 @@ pub const Type = union(enum) {
             .u32 => writer.writeAll("u32"),
             .u64 => writer.writeAll("u64"),
             .u8 => writer.writeAll("u8"),
+            .pointer => |child_type| writer.print("*{}", .{child_type}),
         };
     }
 };
@@ -176,6 +192,7 @@ const FunctionAnalyzer = struct {
     body: Body,
     scopes: std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)),
     next_label_id: LabelId,
+    should_emit: bool = true,
     file_index: indexer.FileIndex,
     input: []const u8,
     allocator: Allocator,
@@ -249,17 +266,23 @@ const FunctionAnalyzer = struct {
         range: TextRange,
     ) !void {
         if (local_declaration.value) |value| {
-            const expected_type = self.analyzeType(local_declaration.ty);
-            const actual_type = try self.analyzeExpression(value, expected_type);
-            std.debug.assert(actual_type.isEqual(expected_type));
+            const ty = blk: {
+                const expected_type = self.analyzeType(local_declaration.ty);
+                const actual_type = try self.analyzeExpression(value, expected_type);
+                std.debug.assert(actual_type.isEqual(expected_type));
+                break :blk expected_type;
+            };
 
-            const local_index = try self.createLocal(
-                local_declaration.name,
-                actual_type,
-            );
+            const local_index = try self.createLocal(local_declaration.name, ty);
 
-            const instruction = .{ .lst = local_index };
-            try self.pushInstruction(instruction, expected_type, range);
+            const child_type = try self.allocator.create(Type);
+            child_type.* = ty;
+            const pointer_type = .{ .pointer = child_type };
+
+            const instruction = .{ .laddr = local_index };
+            try self.pushInstruction(instruction, pointer_type, range);
+
+            try self.pushInstruction(.st, ty, range);
         }
 
         const ty = self.analyzeType(local_declaration.ty);
@@ -339,8 +362,8 @@ const FunctionAnalyzer = struct {
                 expected_type_opt,
             ),
 
-            .name => |name| return self.analyzeName(
-                name,
+            .unary => |unary| return self.analyzeUnary(
+                unary,
                 expression.range,
                 expected_type_opt,
             ),
@@ -350,7 +373,24 @@ const FunctionAnalyzer = struct {
                 expression.range,
                 expected_type_opt,
             ),
+
+            .name => |name| return self.analyzeName(
+                name,
+                expression.range,
+                expected_type_opt,
+            ),
         }
+    }
+
+    fn analyzeAddressOfExpression(
+        self: *FunctionAnalyzer,
+        expression: Ast.Expression,
+        expected_type_opt: ?Type,
+    ) !Type {
+        return switch (expression.data) {
+            .name => |name| self.analyzeAddressOfName(name, expression.range, expected_type_opt),
+            else => self.emitError(expression.range, "expression is not an lvalue", .{}),
+        };
     }
 
     fn analyzeInteger(
@@ -381,15 +421,34 @@ const FunctionAnalyzer = struct {
         range: TextRange,
         expected_type_opt: ?Type,
     ) !Type {
-        const scope_entry = self.lookupLocal(name, range);
-        const instruction = .{ .lld = scope_entry.index };
-        try self.pushInstruction(instruction, scope_entry.ty, range);
+        const ty = switch (try self.analyzeAddressOfName(name, range, expected_type_opt)) {
+            .pointer => |child_type| child_type.*,
+            else => unreachable,
+        };
+        try self.pushInstruction(.ld, ty, range);
         const casted_ty = try self.checkAndCast(
-            scope_entry.ty,
+            ty,
             expected_type_opt,
             range,
         );
         return casted_ty;
+    }
+
+    fn analyzeAddressOfName(
+        self: *FunctionAnalyzer,
+        name: []const u8,
+        range: TextRange,
+        expected_type_opt: ?Type,
+    ) !Type {
+        _ = expected_type_opt;
+        const scope_entry = self.lookupLocal(name, range);
+        const child_type = try self.allocator.create(Type);
+        child_type.* = scope_entry.ty;
+        const pointer_type = .{ .pointer = child_type };
+
+        const instruction = .{ .laddr = scope_entry.index };
+        try self.pushInstruction(instruction, pointer_type, range);
+        return pointer_type;
     }
 
     fn analyzeBinary(
@@ -428,6 +487,54 @@ const FunctionAnalyzer = struct {
             .not_equal => .ne,
         };
         try self.pushInstruction(instruction, ty, range);
+
+        return ty;
+    }
+
+    fn analyzeUnary(
+        self: *FunctionAnalyzer,
+        unary: Ast.Expression.Unary,
+        range: TextRange,
+        expected_type_opt: ?Type,
+    ) !Type {
+        const operand = unary.operand.*;
+
+        std.debug.assert(self.should_emit);
+        self.should_emit = false;
+        const operand_type = try self.analyzeExpression(operand, expected_type_opt);
+        self.should_emit = true;
+
+        const ty = switch (unary.op) {
+            .dereference => blk: {
+                const expected_type = switch (operand_type) {
+                    .pointer => |child_type| child_type.*,
+                    else => self.emitError(
+                        operand.range,
+                        "expected pointer type but found {}",
+                        .{operand_type},
+                    ),
+                };
+
+                const actual_type = try self.analyzeExpression(operand, expected_type);
+                std.debug.assert(expected_type.isEqual(actual_type));
+
+                try self.pushInstruction(.ld, expected_type, range);
+
+                break :blk expected_type;
+            },
+
+            .address_of => blk: {
+                const child_type = try self.allocator.create(Type);
+                child_type.* = operand_type;
+                const expected_type = Type{ .pointer = child_type };
+                const actual_type = try self.analyzeAddressOfExpression(
+                    operand,
+                    expected_type_opt,
+                );
+                std.debug.assert(expected_type.isEqual(actual_type));
+                break :blk expected_type;
+            },
+        };
 
         return ty;
     }
@@ -517,6 +624,8 @@ const FunctionAnalyzer = struct {
         ty: IRType,
         range: TextRange,
     ) !void {
+        if (!self.should_emit) return;
+
         const instruction = .{
             .data = data,
             .ty = ty,
@@ -557,6 +666,7 @@ const FunctionAnalyzer = struct {
             .u64 => @intCast(u64, try std.fmt.parseInt(u64, integer_str, 10)),
             .i32 => @bitCast(u64, @intCast(i64, try std.fmt.parseInt(i32, integer_str, 10))),
             .i64 => @bitCast(u64, try std.fmt.parseInt(i64, integer_str, 10)),
+            .pointer => unreachable,
         };
     }
 };
@@ -639,10 +749,11 @@ const PrettyPrintContext = struct {
         try self.writer.print("{}\t", .{instruction.ty});
         switch (instruction.data) {
             .push => |integer| try self.writer.print("push\t{}", .{integer}),
-            .lst => |local_index| try self.writer.print("lst\t{}", .{local_index}),
-            .lld => |local_index| try self.writer.print("lld\t{}", .{local_index}),
+            .laddr => |local_index| try self.writer.print("laddr\t{}", .{local_index}),
             .b => |label| try self.writer.print("b\tl{}", .{label.index}),
             .cbz => |label| try self.writer.print("cbz\tl{}", .{label.index}),
+            .ld => try self.writer.writeAll("ld"),
+            .st => try self.writer.writeAll("st"),
             .ret => try self.writer.writeAll("ret"),
             .add => try self.writer.writeAll("add"),
             .sub => try self.writer.writeAll("sub"),

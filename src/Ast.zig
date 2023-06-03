@@ -28,6 +28,8 @@ pub const Statement = struct {
 
     pub const Data = union(enum) {
         local_declaration: LocalDeclaration,
+        assign: Assign,
+        expr: Expression,
         return_: Return,
         if_: If,
         while_: While,
@@ -38,6 +40,11 @@ pub const Statement = struct {
         name: []const u8,
         ty: Ast.Type,
         value: Ast.Expression,
+    };
+
+    pub const Assign = struct {
+        lhs: Ast.Expression,
+        rhs: Ast.Expression,
     };
 
     pub const Return = struct {

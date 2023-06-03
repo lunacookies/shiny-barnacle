@@ -70,13 +70,39 @@ const Parser = struct {
     }
 
     fn parseStatement(self: *Parser, a: Allocator) Allocator.Error!Ast.Statement {
-        switch (self.current()) {
-            .let_kw => return self.parseLocalDeclaration(a),
-            .return_kw => return self.parseReturn(a),
-            .if_kw => return self.parseIf(a),
-            .while_kw => return self.parseWhile(a),
-            .l_brace => return self.parseBlock(a),
-            else => self.emitError("expected statement", .{}),
+        while (self.current() == .semicolon) self.bump(.semicolon);
+        return switch (self.current()) {
+            .let_kw => self.parseLocalDeclaration(a),
+            .return_kw => self.parseReturn(a),
+            .if_kw => self.parseIf(a),
+            .while_kw => self.parseWhile(a),
+            .l_brace => self.parseBlock(a),
+            else => self.parseAssignOrExprStmt(a),
+        };
+    }
+
+    fn parseAssignOrExprStmt(self: *Parser, a: Allocator) !Ast.Statement {
+        const start = self.inputIndex();
+        const lhs = try self.parseExpression(a);
+        if (self.current() == .equals) {
+            self.bump(.equals);
+            const value = try self.parseExpression(a);
+            const end = self.inputIndex();
+            return .{
+                .data = .{ .assign = .{
+                    .lhs = lhs,
+                    .rhs = value,
+                } },
+                .range = .{ .start = start, .end = end },
+            };
+        } else {
+            const end = self.inputIndex();
+            return .{
+                .data = .{
+                    .expr = lhs,
+                },
+                .range = .{ .start = start, .end = end },
+            };
         }
     }
 

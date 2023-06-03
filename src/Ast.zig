@@ -197,6 +197,8 @@ const PrettyPrintContext = struct {
             .if_ => |if_| self.printIf(if_),
             .while_ => |while_| self.printWhile(while_),
             .block => |block| self.printBlock(block),
+            .expr => |expr| self.printExpression(expr),
+            .assign => |assign| self.printAssign(assign),
         };
     }
 
@@ -210,6 +212,15 @@ const PrettyPrintContext = struct {
             try self.writer.writeAll(" = ");
             try self.printExpression(value);
         }
+    }
+
+    fn printAssign(
+        self: *PrettyPrintContext,
+        assign: Ast.Statement.Assign,
+    ) Error!void {
+        try self.printExpression(assign.lhs);
+        try self.writer.writeAll(" = ");
+        try self.printExpression(assign.rhs);
     }
 
     fn printReturn(

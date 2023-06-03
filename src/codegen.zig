@@ -24,13 +24,16 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
             try local_offsets.append(current_offset);
         }
 
+        const align_bits = 4;
+        const stack_size = ((current_offset + (1 << align_bits) - 1) >> align_bits) << align_bits;
+
         var context = CodegenContext{
             .assembly = &assembly,
             .input = input,
             .body = body,
             .function_name = name,
             .local_offsets = local_offsets.items,
-            .stack_size = current_offset,
+            .stack_size = stack_size,
         };
 
         try context.genFunction();
@@ -87,14 +90,17 @@ const CodegenContext = struct {
     }
 
     fn genInstruction(self: *CodegenContext, instruction: Lir.Instruction) !void {
+        try self.assembly.writer().print("\t# {}\n", .{instruction});
         switch (instruction.data) {
             .push => |value| {
                 try self.print("\tmov\t{s}, {}\n", .{ getSizedRax(instruction.ty), value });
                 try self.push();
             },
 
+            .drop => try self.popRAX(),
+
             .laddr => |local_index| {
-                try self.genLocalAddress(instruction.ty, local_index);
+                try self.genLocalAddress(local_index);
             },
 
             .b => |label| {
@@ -102,13 +108,14 @@ const CodegenContext = struct {
             },
 
             .cbz => |label| {
-                try self.pop("rax");
+                try self.popRAX();
                 try self.print("\tcmp\trax, 0\n", .{});
                 try self.print("\tje\t.L.{}\n", .{label.index});
             },
 
             .ld => try self.load(instruction.ty),
-            .st => try self.store(instruction.ty),
+            .st_vp => try self.store_vp(instruction.ty),
+            .st_pv => try self.store_pv(instruction.ty),
 
             .ret => try self.print("\tjmp\t.L.return.{s}\n", .{self.function_name}),
 
@@ -134,12 +141,12 @@ const CodegenContext = struct {
         }
     }
 
-    fn genCast(self: *@This(), src_ty: Lir.IRType, dest_ty: Lir.IRType) !void {
+    fn genCast(self: *@This(), src_type: Lir.IRType, dest_type: Lir.IRType) !void {
         try self.popRAX();
-        if (dest_ty.isSigned()) {
-            try self.print("\tmovsx\t{s}, {s}\n", .{ getSizedRax(dest_ty), getSizedRax(src_ty) });
+        if (src_type.isSigned()) {
+            try self.print("\tmovsx\t{s}, {s}\n", .{ getSizedRax(dest_type), getSizedRax(src_type) });
         } else {
-            try self.print("\tmovzx\t{s}, {s}\n", .{ getSizedRax(dest_ty), getSizedRax(src_ty) });
+            try self.print("\tmovzx\t{s}, {s}\n", .{ getSizedRax(dest_type), getSizedRax(src_type) });
         }
         try self.push();
     }
@@ -224,14 +231,24 @@ const CodegenContext = struct {
     }
 
     fn load(self: *CodegenContext, ty: Lir.Type) !void {
-        try self.pop("rax");
+        try self.popRAX();
         try self.print("\tmov\t{s}, [rax]\n", .{getSizedRax(ty)});
+        try self.push();
     }
 
-    fn store(self: *CodegenContext, ty: Lir.Type) !void {
-        try self.pop("rax"); // pop destination address
+    fn store_pv(self: *CodegenContext, ty: Lir.Type) !void {
         const value_reg = getSizedRdi(ty);
-        try self.pop(value_reg); // pop value to store
+        // try self.pop(value_reg); // pop value to store
+        try self.pop("rdi"); // pop value to store
+        try self.popRAX(); // pop destination address
+        try self.print("\tmov\t[rax], {s}\n", .{value_reg});
+    }
+
+    fn store_vp(self: *CodegenContext, ty: Lir.Type) !void {
+        try self.popRAX(); // pop destination address
+        try self.pop("rdi"); // pop value to store
+        const value_reg = getSizedRdi(ty);
+        // try self.pop(value_reg); // pop value to store
         try self.print("\tmov\t[rax], {s}\n", .{value_reg});
     }
 
@@ -253,9 +270,9 @@ const CodegenContext = struct {
         };
     }
 
-    fn genLocalAddress(self: *CodegenContext, ty: Lir.Type, local_index: u32) !void {
+    fn genLocalAddress(self: *CodegenContext, local_index: u32) !void {
         const offset = self.local_offsets[local_index];
-        try self.print("\tlea\t{s}, [rbp - {}]\n", .{ getSizedRax(ty), offset });
+        try self.print("\tlea\trax, [rbp - {}]\n", .{offset});
         try self.push();
     }
 
@@ -275,9 +292,11 @@ const CodegenContext = struct {
     fn pop(self: *CodegenContext, register: []const u8) !void {
         if (self.push_queued) {
             self.push_queued = false;
-            try self.assembly.writer().writeAll("\tpush\trax\n");
+            // try self.assembly.writer().writeAll("\tpush\trax\n");
+            try self.print("\tmov\t{s}, rax\n", .{register});
+        } else {
+            try self.print("\tpop\t{s}\n", .{register});
         }
-        try self.print("\tpop\t{s}\n", .{register});
     }
 
     fn print(

@@ -93,12 +93,8 @@ const CodegenContext = struct {
                 try self.push();
             },
 
-            .lst => |local_index| {
-                try self.storeLocal(instruction.ty, local_index);
-            },
-
-            .lld => |local_index| {
-                try self.loadLocal(instruction.ty, local_index);
+            .laddr => |local_index| {
+                try self.genLocalAddress(instruction.ty, local_index);
             },
 
             .b => |label| {
@@ -110,6 +106,9 @@ const CodegenContext = struct {
                 try self.print("\tcmp\trax, 0\n", .{});
                 try self.print("\tje\t.L.{}\n", .{label.index});
             },
+
+            .ld => try self.load(instruction.ty),
+            .st => try self.store(instruction.ty),
 
             .ret => try self.print("\tjmp\t.L.return.{s}\n", .{self.function_name}),
 
@@ -175,6 +174,7 @@ const CodegenContext = struct {
                         try self.print("\txor edx, edx\n", .{});
                         try self.print("\tdiv\trdi\n", .{});
                     },
+                    .pointer => unreachable,
                 }
                 if (instruction.data == .mod)
                     try self.print("\tmov\trax, rdx\n", .{});
@@ -223,11 +223,24 @@ const CodegenContext = struct {
         try self.push();
     }
 
+    fn load(self: *CodegenContext, ty: Lir.Type) !void {
+        try self.pop("rax");
+        try self.print("\tmov\t{s}, [rax]\n", .{getSizedRax(ty)});
+    }
+
+    fn store(self: *CodegenContext, ty: Lir.Type) !void {
+        try self.pop("rax"); // pop destination address
+        const value_reg = getSizedRdi(ty);
+        try self.pop(value_reg); // pop value to store
+        try self.print("\tmov\t[rax], {s}\n", .{value_reg});
+    }
+
     fn getSizedRax(ty: Lir.Type) []const u8 {
         return switch (ty) {
             .i32, .u32 => "eax",
             .i64, .u64 => "rax",
             .u8 => "al",
+            .pointer => "rax",
         };
     }
 
@@ -236,18 +249,13 @@ const CodegenContext = struct {
             .i32, .u32 => "edi",
             .i64, .u64 => "rdi",
             .u8 => "dil",
+            .pointer => "rdi",
         };
     }
 
-    fn storeLocal(self: *CodegenContext, ty: Lir.Type, local_index: u32) !void {
-        try self.popRAX();
-        const reg = getSizedRax(ty);
-        try self.print("\tmov\t[rbp - {}], {s}\n", .{ self.local_offsets[local_index], reg });
-    }
-
-    fn loadLocal(self: *CodegenContext, ty: Lir.Type, local_index: u32) !void {
-        const reg = getSizedRax(ty);
-        try self.print("\tmov\t{s}, [rbp - {}]\n", .{ reg, self.local_offsets[local_index] });
+    fn genLocalAddress(self: *CodegenContext, ty: Lir.Type, local_index: u32) !void {
+        const offset = self.local_offsets[local_index];
+        try self.print("\tlea\t{s}, [rbp - {}]\n", .{ getSizedRax(ty), offset });
         try self.push();
     }
 

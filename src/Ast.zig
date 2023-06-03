@@ -12,9 +12,20 @@ pub const Item = struct {
 
     pub const Data = union(enum) {
         function: Function,
+        strukt: Struct,
     };
 
     pub const Function = struct { body: Ast.Statement };
+
+    pub const Struct = struct {
+        fields: std.ArrayList(Field),
+
+        pub const Field = struct {
+            name: []const u8,
+            ty: Type,
+            range: TextRange,
+        };
+    };
 };
 
 pub const Type = struct {
@@ -39,7 +50,7 @@ pub const Statement = struct {
     pub const LocalDeclaration = struct {
         name: []const u8,
         ty: Ast.Type,
-        value: Ast.Expression,
+        value: ?Ast.Expression,
     };
 
     pub const Assign = struct {
@@ -73,8 +84,19 @@ pub const Expression = struct {
 
     pub const Data = union(enum) {
         integer: []const u8,
+        unary: Unary,
         binary: Binary,
         name: []const u8,
+    };
+
+    pub const Unary = struct {
+        operand: *Expression,
+        op: Operator,
+
+        pub const Operator = enum {
+            dereference,
+            address_of,
+        };
     };
 
     pub const Binary = struct {
@@ -137,6 +159,7 @@ const PrettyPrintContext = struct {
     fn printItem(self: *PrettyPrintContext, item: Ast.Item) Error!void {
         try switch (item.data) {
             .function => |function| self.printFunction(item.name, function),
+            .strukt => |strukt| self.printStruct(item.name, strukt),
         };
     }
 
@@ -147,6 +170,20 @@ const PrettyPrintContext = struct {
     ) Error!void {
         try self.writer.print("func {s} ", .{name});
         try self.printStatement(function.body);
+    }
+
+    fn printStruct(
+        self: *PrettyPrintContext,
+        name: []const u8,
+        strukt: Ast.Item.Struct,
+    ) Error!void {
+        try self.writer.print("struct {s} {{", .{name});
+        for (strukt.fields.items) |field| {
+            try self.writer.print("\n\t{s} ", .{field.name});
+            try self.printType(field.ty);
+            try self.writer.writeByte(',');
+        }
+        try self.writer.writeAll("\n}");
     }
 
     fn printType(self: *PrettyPrintContext, ty: Ast.Type) Error!void {
@@ -169,8 +206,10 @@ const PrettyPrintContext = struct {
     ) Error!void {
         try self.writer.print("let {s} ", .{local_declaration.name});
         try self.printType(local_declaration.ty);
-        try self.writer.writeAll(" = ");
-        try self.printExpression(local_declaration.value);
+        if (local_declaration.value) |value| {
+            try self.writer.writeAll(" = ");
+            try self.printExpression(value);
+        }
     }
 
     fn printReturn(
@@ -220,6 +259,17 @@ const PrettyPrintContext = struct {
         try switch (expression.data) {
             .integer => |integer| self.writer.writeAll(integer),
             .name => |name| self.writer.writeAll(name),
+
+            .unary => |unary| {
+                const op: u8 = switch (unary.op) {
+                    .dereference => '*',
+                    .address_of => '&',
+                };
+                try self.writer.writeByte(op);
+                try self.writer.writeByte('(');
+                try self.printExpression(unary.operand.*);
+                try self.writer.writeByte(')');
+            },
 
             .binary => |binary| {
                 try self.writer.writeByte('(');

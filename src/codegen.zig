@@ -3,18 +3,13 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const Lir = @import("Lir.zig");
 
-pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
+pub fn codegen(source: []const u8, lir: Lir, a: Allocator) ![]const u8 {
     var assembly = std.ArrayList(u8).init(a);
 
     try assembly.appendSlice(".intel_syntax noprefix\n");
 
-    var iterator = lir.bodies.iterator();
-    while (iterator.next()) |entry| {
-        const name = entry.key_ptr.*;
-        const body = entry.value_ptr.*;
-
-        var local_offsets = try std.ArrayList(u32)
-            .initCapacity(a, body.local_types.items.len);
+    for (lir.bodies.keys(), lir.bodies.values()) |name, *body| {
+        var local_offsets = try std.ArrayList(u32).initCapacity(a, body.local_types.items.len);
         defer local_offsets.deinit();
 
         var current_offset: u32 = 0;
@@ -29,11 +24,12 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
 
         var context = CodegenContext{
             .assembly = &assembly,
-            .input = input,
+            .source = source,
             .body = body,
             .function_name = name,
             .local_offsets = local_offsets.items,
             .stack_size = stack_size,
+            .bodies = &lir.bodies,
         };
 
         try context.genFunction();
@@ -42,13 +38,16 @@ pub fn codegen(input: []const u8, lir: Lir, a: Allocator) ![]const u8 {
     return assembly.toOwnedSlice();
 }
 
+const param_registers = [_][]const u8{ "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
+
 const CodegenContext = struct {
     assembly: *std.ArrayList(u8),
-    input: []const u8,
-    body: Lir.Body,
+    source: []const u8,
+    body: *Lir.Body,
     function_name: []const u8,
     local_offsets: []const u32,
     stack_size: u32,
+    bodies: *std.StringArrayHashMap(Lir.Body),
     push_queued: bool = false,
 
     fn genFunction(self: *CodegenContext) !void {
@@ -66,6 +65,11 @@ const CodegenContext = struct {
         try self.print("\tpush\trbp\n", .{});
         try self.print("\tmov\trbp, rsp\n", .{});
         try self.print("\tsub\trsp, {}\n", .{self.stack_size});
+
+        for (self.body.params, 0..) |ty, i| {
+            try self.print("\tmov\trax, {s}\n", .{param_registers[i]});
+            try self.print("\tmov\t[rbp - {}], {s}\n", .{ self.local_offsets[i], getSizedRax(ty) });
+        }
 
         for (self.body.instructions.items, 0..) |instruction, instruction_index| {
             for (self.body.labels.items, 0..) |label, label_index| {
@@ -138,8 +142,12 @@ const CodegenContext = struct {
             => try self.genBinary(instruction),
 
             .cast => |src_ty| try self.genCast(src_ty, instruction.ty),
+
+            .call => |item_id| try self.genCall(item_id),
         }
     }
+
+    fn genCall(self: *@This(), item_id: )
 
     fn genCast(self: *@This(), src_type: Lir.IRType, dest_type: Lir.IRType) !void {
         try self.popRAX();

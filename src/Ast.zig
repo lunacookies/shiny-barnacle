@@ -28,7 +28,7 @@ pub const Item = struct {
     };
 
     pub const Struct = struct {
-        fields: std.ArrayList(Field),
+        fields: []Field,
 
         pub const Field = struct {
             name: []const u8,
@@ -84,7 +84,7 @@ pub const Statement = struct {
     };
 
     pub const Block = struct {
-        statements: std.ArrayList(Ast.Statement),
+        statements: []Ast.Statement,
     };
 };
 
@@ -97,6 +97,12 @@ pub const Expression = struct {
         unary: Unary,
         binary: Binary,
         name: []const u8,
+        call: Call,
+    };
+
+    pub const Call = struct {
+        lhs: *Expression,
+        params: []Expression,
     };
 
     pub const Unary = struct {
@@ -188,7 +194,7 @@ const PrettyPrintContext = struct {
         strukt: Ast.Item.Struct,
     ) Error!void {
         try self.writer.print("struct {s} {{", .{name});
-        for (strukt.fields.items) |field| {
+        for (strukt.fields) |field| {
             try self.writer.print("\n\t{s} ", .{field.name});
             try self.printType(field.ty);
             try self.writer.writeByte(',');
@@ -261,14 +267,14 @@ const PrettyPrintContext = struct {
     }
 
     fn printBlock(self: *PrettyPrintContext, block: Ast.Statement.Block) Error!void {
-        if (block.statements.items.len == 0) {
+        if (block.statements.len == 0) {
             try self.writer.writeAll("{}");
             return;
         }
 
         try self.writer.writeByte('{');
         self.indentation += 1;
-        for (block.statements.items) |statement| {
+        for (block.statements) |statement| {
             try self.newline();
             try self.printStatement(statement);
         }
@@ -320,6 +326,15 @@ const PrettyPrintContext = struct {
 
                 try self.writer.writeAll(" (");
                 try self.printExpression(binary.rhs.*);
+                try self.writer.writeByte(')');
+            },
+            .call => |call| {
+                try self.printExpression(call.lhs.*);
+                try self.writer.writeByte('(');
+                for (call.params, 0..) |param, i| {
+                    if (i != 0) try self.writer.writeAll(", ");
+                    try self.printExpression(param);
+                }
                 try self.writer.writeByte(')');
             },
         };

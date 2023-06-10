@@ -6,12 +6,15 @@ const Allocator = std.mem.Allocator;
 const TextRange = @import("TextRange.zig");
 const Lir = @This();
 
-bodies: std.StringHashMap(Body),
+bodies: std.StringArrayHashMap(Body),
+
+const ALU = std.ArrayListUnmanaged;
+const SHMU = std.StringHashMapUnmanaged;
 
 pub const Body = struct {
-    instructions: std.ArrayList(Instruction),
-    local_types: std.ArrayList(Type),
-    labels: std.ArrayList(Label),
+    instructions: ALU(Instruction),
+    local_types: ALU(Type),
+    labels: ALU(Label),
     params: []IRType,
     return_type: IRType,
 };
@@ -33,12 +36,13 @@ pub const Instruction = struct {
         laddr: u32,
         b: LabelId,
         cbz: LabelId,
+        call: LabelId,
+        ret,
         ld,
         // push value then pointer
         st_vp,
         // push pointer then value
         st_pv,
-        ret,
         add,
         sub,
         mul,
@@ -187,7 +191,7 @@ pub fn analyze(
     a: Allocator,
 ) !Lir {
     var analyzer = Analyzer{
-        .lir = .{ .bodies = std.StringHashMap(Body).init(a) },
+        .lir = .{ .bodies = std.StringArrayHashMap(Body).init(a) },
         .file_index = file_index,
         .input = input,
     };
@@ -224,7 +228,7 @@ const Analyzer = struct {
 
 const FunctionAnalyzer = struct {
     body: Body,
-    scopes: std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)),
+    scopes: ALU(SHMU(ScopeEntry)),
     next_label_id: LabelId,
     should_emit: bool = true,
     file_index: indexer.FileIndex,
@@ -239,13 +243,13 @@ const FunctionAnalyzer = struct {
     fn init(a: Allocator, file_index: indexer.FileIndex, input: []const u8) @This() {
         return FunctionAnalyzer{
             .body = .{
-                .instructions = std.ArrayList(Instruction).init(a),
-                .local_types = std.ArrayList(Type).init(a),
-                .labels = std.ArrayList(Label).init(a),
+                .instructions = ALU(Instruction){},
+                .local_types = ALU(Type){},
+                .labels = ALU(Label){},
                 .params = undefined,
                 .return_type = undefined,
             },
-            .scopes = std.ArrayList(std.StringHashMapUnmanaged(ScopeEntry)).init(a),
+            .scopes = ALU(SHMU(ScopeEntry)){},
             .next_label_id = .{ .index = 0 },
             .file_index = file_index,
             .input = input,
@@ -258,7 +262,7 @@ const FunctionAnalyzer = struct {
         for (self.scopes.items) |*scope| {
             scope.deinit(self.allocator);
         }
-        self.scopes.deinit();
+        self.scopes.deinit(self.allocator);
     }
 
     fn analyzeFunction(
@@ -269,6 +273,7 @@ const FunctionAnalyzer = struct {
 
         self.body.params = try self.allocator.alloc(Type, function.params.len);
 
+        std.debug.print("params {any}\n", .{function.params});
         for (function.params, 0..) |param, i| {
             const ty = self.analyzeType(param.ty);
             const j = try self.createLocal(param.name, ty);
@@ -634,7 +639,7 @@ const FunctionAnalyzer = struct {
 
         const last_scope = &self.scopes.items[self.scopes.items.len - 1];
         try last_scope.put(self.allocator, name, entry);
-        try self.body.local_types.append(ty);
+        try self.body.local_types.append(self.allocator, ty);
 
         return i;
     }
@@ -683,7 +688,7 @@ const FunctionAnalyzer = struct {
     fn allocateLabel(self: *FunctionAnalyzer) !LabelId {
         const id = self.next_label_id;
         self.next_label_id.index += 1;
-        try self.body.labels.append(.{
+        try self.body.labels.append(self.allocator, .{
             .instruction_index = std.math.maxInt(u32),
         });
         return id;
@@ -707,14 +712,14 @@ const FunctionAnalyzer = struct {
             .ty = ty,
             .range = range,
         };
-        try self.body.instructions.append(instruction);
+        try self.body.instructions.append(self.allocator, instruction);
     }
 
     fn checkAndCast(self: *@This(), src: Type, dest: ?Type, range: TextRange) !Type {
         const d = dest orelse return src;
         if (src.isEqual(d)) return d;
         if (src.isSubtype(d)) {
-            try self.body.instructions.append(.{
+            try self.body.instructions.append(self.allocator, .{
                 .data = .{ .cast = src },
                 .ty = d,
                 .range = range,
@@ -725,8 +730,8 @@ const FunctionAnalyzer = struct {
     }
 
     fn pushScope(self: *FunctionAnalyzer) !void {
-        const new_scope = std.StringHashMapUnmanaged(ScopeEntry){};
-        try self.scopes.append(new_scope);
+        const new_scope = SHMU(ScopeEntry){};
+        try self.scopes.append(self.allocator, new_scope);
     }
 
     fn popScope(self: *FunctionAnalyzer) void {
@@ -771,12 +776,7 @@ const PrettyPrintContext = struct {
     const Error = error{Overflow};
 
     fn printLir(self: *PrettyPrintContext, lir: Lir) Error!void {
-        var iterator = lir.bodies.iterator();
-        var i: u32 = 0;
-        while (iterator.next()) |entry| : (i += 1) {
-            const name = entry.key_ptr.*;
-            const body = entry.value_ptr.*;
-
+        for (lir.bodies.keys(), lir.bodies.values(), 0..) |name, body, i| {
             if (i != 0) try self.writer.writeAll("\n\n");
             try self.printBody(name, body);
         }
@@ -827,6 +827,7 @@ const PrettyPrintContext = struct {
             .laddr => |local_index| try self.writer.print("laddr\t{}", .{local_index}),
             .b => |label| try self.writer.print("b\tl{}", .{label.index}),
             .cbz => |label| try self.writer.print("cbz\tl{}", .{label.index}),
+            .call => |label| try self.writer.print("call\tl{}", .{label.index}),
             .or_ => try self.writer.writeAll("or"),
             .and_ => try self.writer.writeAll("and"),
             .cast => |ty| try self.writer.print("cast\t{}", .{ty}),

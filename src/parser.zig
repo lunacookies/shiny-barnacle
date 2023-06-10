@@ -5,8 +5,8 @@ const Ast = @import("Ast.zig");
 const Allocator = std.mem.Allocator;
 
 pub fn parse(input: []const u8, tokens: []const lexer.Token, a: Allocator) !Ast {
-    var parser = Parser.init(input, tokens);
-    return parser.parse(a);
+    var parser = Parser.init(input, tokens, a);
+    return parser.parse();
 }
 
 const expression_first_set = std.EnumSet(lexer.TokenKind)
@@ -22,31 +22,34 @@ const Parser = struct {
     input: []const u8,
     tokens: []const lexer.Token,
     cursor: usize,
+    allocator: Allocator,
 
-    fn init(input: []const u8, tokens: []const lexer.Token) Parser {
-        return .{ .input = input, .tokens = tokens, .cursor = 0 };
+    const ParseError = std.mem.Allocator.Error;
+
+    fn init(input: []const u8, tokens: []const lexer.Token, allocator: Allocator) Parser {
+        return .{ .input = input, .tokens = tokens, .cursor = 0, .allocator = allocator };
     }
 
-    fn parse(self: *Parser, a: Allocator) !Ast {
-        var items = std.ArrayList(Ast.Item).init(a);
+    fn parse(self: *Parser) !Ast {
+        var items = std.ArrayList(Ast.Item).init(self.allocator);
 
         while (!self.atEof()) {
-            const item = try self.parseItem(a);
+            const item = try self.parseItem();
             try items.append(item);
         }
 
         return .{ .items = items };
     }
 
-    fn parseItem(self: *Parser, a: Allocator) !Ast.Item {
+    fn parseItem(self: *Parser) ParseError!Ast.Item {
         switch (self.current()) {
-            .func_kw => return self.parseFunction(a),
-            .struct_kw => return self.parseStruct(a),
+            .func_kw => return self.parseFunction(),
+            .struct_kw => return self.parseStruct(),
             else => self.emitError("expected item", .{}),
         }
     }
 
-    fn parseFunction(self: *Parser, a: Allocator) !Ast.Item {
+    fn parseFunction(self: *Parser) ParseError!Ast.Item {
         const start = self.inputIndex();
 
         self.bump(.func_kw);
@@ -64,7 +67,7 @@ const Parser = struct {
             if (self.current() == .r_paren) break;
             self.expect(.comma);
 
-            try params.append(a, .{
+            try params.append(self.allocator, .{
                 .ty = param_ty,
                 .name = param_name,
                 .range = .{ .start = param_start, .end = param_end },
@@ -75,7 +78,7 @@ const Parser = struct {
 
         const return_type = self.parseType();
 
-        const body = try self.parseBlock(a);
+        const body = try self.parseBlock();
 
         const end = self.inputIndex();
 
@@ -84,7 +87,7 @@ const Parser = struct {
             .data = .{
                 .function = .{
                     .body = body,
-                    .params = try params.toOwnedSlice(a),
+                    .params = try params.toOwnedSlice(self.allocator),
                     .return_type = return_type,
                 },
             },
@@ -92,12 +95,12 @@ const Parser = struct {
         };
     }
 
-    fn parseStruct(self: *Parser, a: Allocator) !Ast.Item {
+    fn parseStruct(self: *Parser) !Ast.Item {
         const start = self.inputIndex();
         self.bump(.struct_kw);
         const name = self.expectWithText(.identifier);
 
-        var fields = std.ArrayList(Ast.Item.Struct.Field).init(a);
+        var fields = std.ArrayList(Ast.Item.Struct.Field).init(self.allocator);
         self.expect(.l_brace);
         while (!self.atEof() and self.current() != .r_brace) {
             const field_start = self.inputIndex();
@@ -122,7 +125,7 @@ const Parser = struct {
             .name = name,
             .data = .{
                 .strukt = .{
-                    .fields = fields,
+                    .fields = try fields.toOwnedSlice(),
                 },
             },
             .range = .{ .start = start, .end = end },
@@ -144,24 +147,24 @@ const Parser = struct {
         }
     }
 
-    fn parseStatement(self: *Parser, a: Allocator) Allocator.Error!Ast.Statement {
+    fn parseStatement(self: *Parser) Allocator.Error!Ast.Statement {
         while (self.current() == .semicolon) self.bump(.semicolon);
         return switch (self.current()) {
-            .let_kw => self.parseLocalDeclaration(a),
-            .return_kw => self.parseReturn(a),
-            .if_kw => self.parseIf(a),
-            .while_kw => self.parseWhile(a),
-            .l_brace => self.parseBlock(a),
-            else => self.parseAssignOrExprStmt(a),
+            .let_kw => self.parseLocalDeclaration(),
+            .return_kw => self.parseReturn(),
+            .if_kw => self.parseIf(),
+            .while_kw => self.parseWhile(),
+            .l_brace => self.parseBlock(),
+            else => self.parseAssignOrExprStmt(),
         };
     }
 
-    fn parseAssignOrExprStmt(self: *Parser, a: Allocator) !Ast.Statement {
+    fn parseAssignOrExprStmt(self: *Parser) !Ast.Statement {
         const start = self.inputIndex();
-        const lhs = try self.parseExpression(a);
+        const lhs = try self.parseExpression();
         if (self.current() == .equals) {
             self.bump(.equals);
-            const value = try self.parseExpression(a);
+            const value = try self.parseExpression();
             const end = self.inputIndex();
             return .{
                 .data = .{ .assign = .{
@@ -181,7 +184,7 @@ const Parser = struct {
         }
     }
 
-    fn parseLocalDeclaration(self: *Parser, a: Allocator) !Ast.Statement {
+    fn parseLocalDeclaration(self: *Parser) !Ast.Statement {
         const start = self.inputIndex();
 
         self.bump(.let_kw);
@@ -191,7 +194,7 @@ const Parser = struct {
 
         if (self.current() == .equals) {
             self.bump(.equals);
-            value = try self.parseExpression(a);
+            value = try self.parseExpression();
         }
 
         const end = self.inputIndex();
@@ -208,12 +211,12 @@ const Parser = struct {
         };
     }
 
-    fn parseReturn(self: *Parser, a: Allocator) !Ast.Statement {
+    fn parseReturn(self: *Parser) !Ast.Statement {
         const start = self.inputIndex();
         self.bump(.return_kw);
 
         const value = if (expression_first_set.contains(self.current()))
-            try self.parseExpression(a)
+            try self.parseExpression()
         else
             null;
         const end = self.inputIndex();
@@ -226,20 +229,20 @@ const Parser = struct {
         };
     }
 
-    fn parseIf(self: *Parser, a: Allocator) !Ast.Statement {
+    fn parseIf(self: *Parser) !Ast.Statement {
         const start = self.inputIndex();
         self.bump(.if_kw);
 
-        const condition = try self.parseExpression(a);
+        const condition = try self.parseExpression();
 
-        const true_branch = try a.create(Ast.Statement);
-        true_branch.* = try self.parseBlock(a);
+        const true_branch = try self.allocator.create(Ast.Statement);
+        true_branch.* = try self.parseBlock();
 
         var false_branch: ?*Ast.Statement = null;
         if (self.current() == .else_kw) {
             self.bump(.else_kw);
-            const p = try a.create(Ast.Statement);
-            p.* = try self.parseBlock(a);
+            const p = try self.allocator.create(Ast.Statement);
+            p.* = try self.parseBlock();
             false_branch = p;
         }
 
@@ -257,14 +260,14 @@ const Parser = struct {
         };
     }
 
-    fn parseWhile(self: *Parser, a: Allocator) !Ast.Statement {
+    fn parseWhile(self: *Parser) !Ast.Statement {
         const start = self.inputIndex();
         self.bump(.while_kw);
 
-        const condition = try self.parseExpression(a);
+        const condition = try self.parseExpression();
 
-        const body = try a.create(Ast.Statement);
-        body.* = try self.parseBlock(a);
+        const body = try self.allocator.create(Ast.Statement);
+        body.* = try self.parseBlock();
 
         const end = self.inputIndex();
 
@@ -279,13 +282,13 @@ const Parser = struct {
         };
     }
 
-    fn parseBlock(self: *Parser, a: Allocator) !Ast.Statement {
+    fn parseBlock(self: *Parser) !Ast.Statement {
         const start = self.inputIndex();
 
         self.expect(.l_brace);
-        var statements = std.ArrayList(Ast.Statement).init(a);
+        var statements = std.ArrayList(Ast.Statement).init(self.allocator);
         while (!self.atEof() and self.current() != .r_brace) {
-            const statement = try self.parseStatement(a);
+            const statement = try self.parseStatement();
             try statements.append(statement);
         }
         self.expect(.r_brace);
@@ -293,26 +296,25 @@ const Parser = struct {
         const end = self.inputIndex();
 
         return .{
-            .data = .{ .block = .{ .statements = statements } },
+            .data = .{ .block = .{ .statements = try statements.toOwnedSlice() } },
             .range = .{ .start = start, .end = end },
         };
     }
 
-    fn parseExpression(self: *Parser, a: Allocator) !Ast.Expression {
-        return self.parseExpressionWithBindingPower(0, a);
+    fn parseExpression(self: *Parser) ParseError!Ast.Expression {
+        return self.parseExpressionWithBindingPower(0);
     }
 
     fn parseExpressionWithBindingPower(
         self: *Parser,
         min_binding_power: u8,
-        a: Allocator,
     ) !Ast.Expression {
         const OpBindingPower = struct {
             op: Ast.Expression.Binary.Operator,
             binding_power: u8,
         };
 
-        var lhs = try self.parseLhs(a);
+        var lhs = try self.parseLhs();
 
         while (true) {
             const op_binding_power: OpBindingPower = switch (self.current()) {
@@ -397,13 +399,10 @@ const Parser = struct {
 
             self.bumpAny(); // eat operator
 
-            const rhs = try self.parseExpressionWithBindingPower(
-                op_binding_power.binding_power + 1,
-                a,
-            );
+            const rhs = try self.parseExpressionWithBindingPower(op_binding_power.binding_power + 1);
 
-            const lhs_p = try a.create(Ast.Expression);
-            const rhs_p = try a.create(Ast.Expression);
+            const lhs_p = try self.allocator.create(Ast.Expression);
+            const rhs_p = try self.allocator.create(Ast.Expression);
             lhs_p.* = lhs;
             rhs_p.* = rhs;
 
@@ -422,15 +421,46 @@ const Parser = struct {
         return lhs;
     }
 
-    fn parseLhs(self: *Parser, a: Allocator) !Ast.Expression {
+    fn parsePostfix(self: *Parser, lhs: Ast.Expression) !Ast.Expression {
+        var new_lhs = lhs;
+        while (true) {
+            switch (self.current()) {
+                .l_paren => {
+                    var params = std.ArrayList(Ast.Expression).init(self.allocator);
+
+                    while (!self.atEof() and self.current() != .r_paren) {
+                        try params.append(try self.parseExpression());
+                        if (self.current() == .r_paren) break;
+                        self.expect(.comma);
+                    }
+
+                    self.expect(.r_paren);
+                    const end = self.inputIndex();
+
+                    var lhs_p = try self.allocator.create(Ast.Expression);
+                    lhs_p.* = new_lhs;
+
+                    new_lhs = .{ .data = .{ .call = .{
+                        .lhs = lhs_p,
+                        .params = try params.toOwnedSlice(),
+                    } }, .range = .{ .start = new_lhs.range.start, .end = end } };
+                },
+                else => break,
+            }
+        }
+        return new_lhs;
+    }
+
+    fn parseLhs(self: *Parser) !Ast.Expression {
         std.debug.assert(expression_first_set.contains(self.current()));
+        var lhs: Ast.Expression = undefined;
         switch (self.current()) {
             .integer => {
                 const start = self.inputIndex();
                 const text = self.bumpWithText(.integer);
                 const end = self.inputIndex();
 
-                return .{
+                lhs = .{
                     .data = .{ .integer = text },
                     .range = .{ .start = start, .end = end },
                 };
@@ -438,35 +468,35 @@ const Parser = struct {
 
             .l_paren => {
                 self.bump(.l_paren);
-                const inner = self.parseExpression(a);
+                const inner = try self.parseExpression();
                 self.expect(.r_paren);
 
-                return inner;
+                lhs = inner;
             },
 
             .identifier => {
                 const start = self.inputIndex();
                 const name = self.expectWithText(.identifier);
                 const end = self.inputIndex();
-                return .{
+                lhs = .{
                     .data = .{ .name = name },
                     .range = .{ .start = start, .end = end },
                 };
             },
 
-            else => {
+            .asterisk, .ampersand => {
                 const start = self.inputIndex();
                 const op: Ast.Expression.Unary.Operator = switch (self.current()) {
                     .asterisk => .dereference,
                     .ampersand => .address_of,
-                    else => self.emitError("expected expression", .{}),
+                    else => unreachable,
                 };
                 self.bumpAny(); // eat operator
-                const operand = try self.parseLhs(a);
-                const operand_ptr = try a.create(Ast.Expression);
+                const operand = try self.parseLhs();
+                const operand_ptr = try self.allocator.create(Ast.Expression);
                 operand_ptr.* = operand;
                 const end = self.inputIndex();
-                return .{
+                lhs = .{
                     .data = .{
                         .unary = .{
                             .op = op,
@@ -476,7 +506,9 @@ const Parser = struct {
                     .range = .{ .start = start, .end = end },
                 };
             },
+            else => self.emitError("expected expression", .{}),
         }
+        return self.parsePostfix(lhs);
     }
 
     fn expect(self: *Parser, kind: lexer.TokenKind) void {

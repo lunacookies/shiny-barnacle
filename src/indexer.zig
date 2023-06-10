@@ -9,7 +9,7 @@ pub fn indexFile(
     ast: Ast,
     a: Allocator,
 ) !FileIndex {
-    var items = std.StringHashMap(Item).init(a);
+    var items = std.StringArrayHashMap(Item).init(a);
 
     for (ast.items.items) |ast_item| {
         const item_data = switch (ast_item.data) {
@@ -39,7 +39,7 @@ pub fn indexFile(
 }
 
 pub const FileIndex = struct {
-    items: std.StringHashMap(Item),
+    items: std.StringArrayHashMap(Item),
 
     pub fn format(
         self: FileIndex,
@@ -85,7 +85,7 @@ pub const Type = struct {
 fn lowerStruct(strukt: Ast.Item.Struct, input: []const u8, a: Allocator) !Item.Data {
     var fields = std.StringHashMap(Item.Struct.Field).init(a);
 
-    for (strukt.fields.items) |ast_field| {
+    for (strukt.fields) |ast_field| {
         if (fields.contains(ast_field.name)) {
             const line_col = utils.indexToLineCol(input, ast_field.range.start);
 
@@ -119,12 +119,7 @@ const PrettyPrintContext = struct {
     const Error = error{Overflow};
 
     fn printFileIndex(self: *PrettyPrintContext, file_index: FileIndex) Error!void {
-        var iterator = file_index.items.iterator();
-        var i: u32 = 0;
-        while (iterator.next()) |entry| : (i += 1) {
-            const name = entry.key_ptr.*;
-            const item = entry.value_ptr.*;
-
+        for (file_index.items.keys(), file_index.items.values(), 0..) |name, item, i| {
             if (i != 0) try self.writer.writeAll("\n");
             try self.printItem(name, item);
         }

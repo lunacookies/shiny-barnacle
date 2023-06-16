@@ -1,17 +1,19 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 const Ast = @import("Ast.zig");
-const Allocator = std.mem.Allocator;
 const TextRange = @import("TextRange.zig");
+const Allocator = std.mem.Allocator;
+const SAHMU = std.StringArrayHashMapUnmanaged;
 
 pub fn indexFile(
     input: []const u8,
     ast: Ast,
     a: Allocator,
 ) !FileIndex {
-    var items = std.StringArrayHashMap(Item).init(a);
+    var items = SAHMU(Item){};
+    try items.ensureTotalCapacity(a, ast.items.len);
 
-    for (ast.items.items) |ast_item| {
+    for (ast.items) |ast_item| {
         const item_data = switch (ast_item.data) {
             .function => Item.Data{ .function = .{} },
             .strukt => |strukt| try lowerStruct(strukt, input, a),
@@ -32,14 +34,14 @@ pub fn indexFile(
             std.os.exit(92);
         }
 
-        try items.put(ast_item.name, item);
+        items.putAssumeCapacityNoClobber(ast_item.name, item);
     }
 
     return .{ .items = items };
 }
 
 pub const FileIndex = struct {
-    items: std.StringArrayHashMap(Item),
+    items: SAHMU(Item),
 
     pub fn format(
         self: FileIndex,
@@ -70,7 +72,7 @@ pub const Item = struct {
     pub const Function = struct {};
 
     pub const Struct = struct {
-        fields: std.StringHashMap(Field),
+        fields: SAHMU(Field),
 
         pub const Field = struct {
             ty: Type,
@@ -83,7 +85,8 @@ pub const Type = struct {
 };
 
 fn lowerStruct(strukt: Ast.Item.Struct, input: []const u8, a: Allocator) !Item.Data {
-    var fields = std.StringHashMap(Item.Struct.Field).init(a);
+    var fields = SAHMU(Item.Struct.Field){};
+    try fields.ensureTotalCapacity(a, strukt.fields.len);
 
     for (strukt.fields) |ast_field| {
         if (fields.contains(ast_field.name)) {
@@ -97,7 +100,7 @@ fn lowerStruct(strukt: Ast.Item.Struct, input: []const u8, a: Allocator) !Item.D
         }
 
         const field = .{ .ty = lowerType(ast_field.ty) };
-        try fields.put(ast_field.name, field);
+        fields.putAssumeCapacityNoClobber(ast_field.name, field);
     }
 
     return .{
@@ -147,11 +150,7 @@ const PrettyPrintContext = struct {
         strukt: Item.Struct,
     ) Error!void {
         try self.writer.print("struct {s} {{", .{name});
-        var iterator = strukt.fields.iterator();
-        while (iterator.next()) |entry| {
-            const field_name = entry.key_ptr.*;
-            const field = entry.value_ptr.*;
-
+        for (strukt.fields.keys(), strukt.fields.values()) |field_name, field| {
             try self.writer.print("\n\t{s} ", .{field_name});
             try self.printType(field.ty);
             try self.writer.writeByte(',');

@@ -1,22 +1,24 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const Allocator = std.mem.Allocator;
 const Lir = @import("Lir.zig");
+const Allocator = std.mem.Allocator;
+const ALU = std.ArrayListUnmanaged;
+const SAHMU = std.StringArrayHashMapUnmanaged;
 
 pub fn codegen(source: []const u8, lir: Lir, a: Allocator) ![]const u8 {
-    var assembly = std.ArrayList(u8).init(a);
+    var assembly = ALU(u8){};
 
-    try assembly.appendSlice(".intel_syntax noprefix\n");
+    try assembly.appendSlice(a, ".intel_syntax noprefix\n");
 
     for (lir.bodies.keys(), lir.bodies.values()) |name, *body| {
-        var local_offsets = try std.ArrayList(u32).initCapacity(a, body.local_types.items.len);
-        defer local_offsets.deinit();
+        var local_offsets = try ALU(u32).initCapacity(a, body.local_types.items.len);
+        defer local_offsets.deinit(a);
 
         var current_offset: u32 = 0;
         for (body.local_types.items) |ty| {
             current_offset += current_offset % ty.alignment();
             current_offset += ty.size();
-            try local_offsets.append(current_offset);
+            local_offsets.appendAssumeCapacity(current_offset);
         }
 
         const align_bits = 4;
@@ -24,6 +26,7 @@ pub fn codegen(source: []const u8, lir: Lir, a: Allocator) ![]const u8 {
 
         var context = CodegenContext{
             .assembly = &assembly,
+            .allocator = a,
             .source = source,
             .body = body,
             .function_name = name,
@@ -35,19 +38,20 @@ pub fn codegen(source: []const u8, lir: Lir, a: Allocator) ![]const u8 {
         try context.genFunction();
     }
 
-    return assembly.toOwnedSlice();
+    return assembly.toOwnedSlice(a);
 }
 
 const param_registers = [_][]const u8{ "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
 const CodegenContext = struct {
-    assembly: *std.ArrayList(u8),
+    assembly: *ALU(u8),
+    allocator: Allocator,
     source: []const u8,
     body: *const Lir.Body,
     function_name: []const u8,
     local_offsets: []const u32,
     stack_size: u32,
-    bodies: *const std.StringArrayHashMap(Lir.Body),
+    bodies: *const SAHMU(Lir.Body),
     push_queued: bool = false,
 
     fn genFunction(self: *CodegenContext) !void {
@@ -94,7 +98,9 @@ const CodegenContext = struct {
     }
 
     fn genInstruction(self: *CodegenContext, instruction: Lir.Instruction) !void {
-        try self.assembly.writer().print("\t# {}\n", .{instruction});
+        const writer = try self.assemblyWriter();
+        try writer.print("\t# {}\n", .{instruction});
+
         switch (instruction.data) {
             .push => |value| {
                 try self.print("\tmov\t{s}, {}\n", .{ getSizedRax(instruction.ty), value });
@@ -318,10 +324,15 @@ const CodegenContext = struct {
         comptime fmt: []const u8,
         args: anytype,
     ) !void {
+        var writer = try self.assemblyWriter();
         if (self.push_queued) {
             self.push_queued = false;
-            try self.assembly.writer().writeAll("\tpush\trax\n");
+            try writer.writeAll("\tpush\trax\n");
         }
-        try self.assembly.writer().print(fmt, args);
+        try writer.print(fmt, args);
+    }
+
+    fn assemblyWriter(self: *CodegenContext) !ALU(u8).Writer {
+        return self.assembly.writer(self.allocator);
     }
 };

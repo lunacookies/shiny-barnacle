@@ -1,11 +1,11 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const indexer = @import("indexer.zig");
 const codegen = @import("codegen.zig");
 const Lir = @import("Lir.zig");
-
-const builtin = @import("builtin");
+const ALU = std.ArrayListUnmanaged;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true }){};
@@ -13,8 +13,8 @@ pub fn main() !void {
 
     const allocator = gpa.allocator();
 
-    var input = std.ArrayList(u8).init(allocator);
-    defer input.deinit();
+    var input = ALU(u8){};
+    defer input.deinit(allocator);
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
@@ -75,7 +75,7 @@ pub fn main() !void {
 
 pub fn compile(allocator: std.mem.Allocator, in_buf: []const u8, debug: bool) ![]const u8 {
     var tokens = try lexer.lex(in_buf, allocator);
-    defer tokens.deinit();
+    defer tokens.deinit(allocator);
 
     if (debug) {
         std.debug.print("\n== TOKENS ==\n\n", .{});
@@ -127,11 +127,4 @@ pub fn assemble(
     }, allocator);
 
     _ = try clang.spawnAndWait();
-}
-
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
 }

@@ -3,7 +3,7 @@ const TextRange = @import("TextRange.zig");
 
 const Ast = @This();
 
-items: std.ArrayList(Ast.Item),
+items: []const Ast.Item,
 
 pub const Item = struct {
     name: []const u8,
@@ -17,7 +17,7 @@ pub const Item = struct {
 
     pub const Function = struct {
         body: Ast.Statement,
-        params: []Param,
+        params: []const Param,
         return_type: Type,
 
         pub const Param = struct {
@@ -28,7 +28,7 @@ pub const Item = struct {
     };
 
     pub const Struct = struct {
-        fields: []Field,
+        fields: []const Field,
 
         pub const Field = struct {
             name: []const u8,
@@ -74,17 +74,17 @@ pub const Statement = struct {
 
     pub const If = struct {
         condition: Ast.Expression,
-        true_branch: *Ast.Statement,
-        false_branch: ?*Ast.Statement,
+        true_branch: *const Ast.Statement,
+        false_branch: ?*const Ast.Statement,
     };
 
     pub const While = struct {
         condition: Ast.Expression,
-        body: *Ast.Statement,
+        body: *const Ast.Statement,
     };
 
     pub const Block = struct {
-        statements: []Ast.Statement,
+        statements: []const Ast.Statement,
     };
 };
 
@@ -101,12 +101,12 @@ pub const Expression = struct {
     };
 
     pub const Call = struct {
-        lhs: *Expression,
-        params: []Expression,
+        lhs: *const Expression,
+        params: []const Expression,
     };
 
     pub const Unary = struct {
-        operand: *Expression,
+        operand: *const Expression,
         op: Operator,
 
         pub const Operator = enum {
@@ -116,8 +116,8 @@ pub const Expression = struct {
     };
 
     pub const Binary = struct {
-        lhs: *Expression,
-        rhs: *Expression,
+        lhs: *const Expression,
+        rhs: *const Expression,
         op: Operator,
 
         pub const Operator = enum {
@@ -166,7 +166,7 @@ const PrettyPrintContext = struct {
     const Error = error{Overflow};
 
     fn printAst(self: *PrettyPrintContext, ast: Ast) Error!void {
-        for (ast.items.items, 0..) |item, i| {
+        for (ast.items, 0..) |item, i| {
             if (i != 0) try self.writer.writeAll("\n\n");
             try self.printItem(item);
         }

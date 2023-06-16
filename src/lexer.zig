@@ -1,8 +1,10 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 const TextRange = @import("TextRange.zig");
+const Allocator = std.mem.Allocator;
+const ALU = std.ArrayListUnmanaged;
 
-pub fn lex(input: []const u8, allocator: std.mem.Allocator) !std.ArrayList(Token) {
+pub fn lex(input: []const u8, allocator: Allocator) !ALU(Token) {
     var lexer = Lexer.init(input, allocator);
     return lexer.lex();
 }
@@ -81,11 +83,11 @@ pub const TokenKind = enum(u8) {
         const name = @tagName(self);
         try writer.writeAll(name);
     }
-
 };
 
 const Lexer = struct {
-    tokens: std.ArrayList(Token),
+    tokens: ALU(Token),
+    allocator: Allocator,
     input: []const u8,
     cursor: u32,
 
@@ -100,15 +102,16 @@ const Lexer = struct {
         .{ "return", .return_kw },
     });
 
-    fn init(input: []const u8, allocator: std.mem.Allocator) Lexer {
+    fn init(input: []const u8, allocator: Allocator) Lexer {
         return .{
-            .tokens = std.ArrayList(Token).init(allocator),
+            .tokens = ALU(Token){},
+            .allocator = allocator,
             .input = input,
             .cursor = 0,
         };
     }
 
-    fn lex(self: *Lexer) !std.ArrayList(Token) {
+    fn lex(self: *Lexer) !ALU(Token) {
         while (!self.atEof()) {
             self.skipWhitespace();
 
@@ -230,14 +233,14 @@ const Lexer = struct {
         };
 
         if (token.kind != .identifier) {
-            try self.tokens.append(token);
+            try self.tokens.append(self.allocator, token);
             return;
         }
 
         const token_text = self.input[token.range.start..token.range.end];
         token.kind = keywords.get(token_text) orelse .identifier;
 
-        try self.tokens.append(token);
+        try self.tokens.append(self.allocator, token);
     }
 
     fn emitError(self: *const Lexer, c: u8) noreturn {

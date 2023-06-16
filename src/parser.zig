@@ -3,6 +3,7 @@ const lexer = @import("lexer.zig");
 const utils = @import("utils.zig");
 const Ast = @import("Ast.zig");
 const Allocator = std.mem.Allocator;
+const ALU = std.ArrayListUnmanaged;
 
 pub fn parse(input: []const u8, tokens: []const lexer.Token, a: Allocator) !Ast {
     var parser = Parser.init(input, tokens, a);
@@ -31,14 +32,14 @@ const Parser = struct {
     }
 
     fn parse(self: *Parser) !Ast {
-        var items = std.ArrayList(Ast.Item).init(self.allocator);
+        var items = ALU(Ast.Item){};
 
         while (!self.atEof()) {
             const item = try self.parseItem();
-            try items.append(item);
+            try items.append(self.allocator, item);
         }
 
-        return .{ .items = items };
+        return .{ .items = items.items };
     }
 
     fn parseItem(self: *Parser) ParseError!Ast.Item {
@@ -100,14 +101,14 @@ const Parser = struct {
         self.bump(.struct_kw);
         const name = self.expectWithText(.identifier);
 
-        var fields = std.ArrayList(Ast.Item.Struct.Field).init(self.allocator);
+        var fields = ALU(Ast.Item.Struct.Field){};
         self.expect(.l_brace);
         while (!self.atEof() and self.current() != .r_brace) {
             const field_start = self.inputIndex();
             const field_name = self.expectWithText(.identifier);
             const field_type = self.parseType();
             const field_end = self.inputIndex();
-            try fields.append(.{
+            try fields.append(self.allocator, .{
                 .name = field_name,
                 .ty = field_type,
                 .range = .{ .start = field_start, .end = field_end },
@@ -125,7 +126,7 @@ const Parser = struct {
             .name = name,
             .data = .{
                 .strukt = .{
-                    .fields = try fields.toOwnedSlice(),
+                    .fields = try fields.toOwnedSlice(self.allocator),
                 },
             },
             .range = .{ .start = start, .end = end },
@@ -286,17 +287,17 @@ const Parser = struct {
         const start = self.inputIndex();
 
         self.expect(.l_brace);
-        var statements = std.ArrayList(Ast.Statement).init(self.allocator);
+        var statements = ALU(Ast.Statement){};
         while (!self.atEof() and self.current() != .r_brace) {
             const statement = try self.parseStatement();
-            try statements.append(statement);
+            try statements.append(self.allocator, statement);
         }
         self.expect(.r_brace);
 
         const end = self.inputIndex();
 
         return .{
-            .data = .{ .block = .{ .statements = try statements.toOwnedSlice() } },
+            .data = .{ .block = .{ .statements = try statements.toOwnedSlice(self.allocator) } },
             .range = .{ .start = start, .end = end },
         };
     }
@@ -426,10 +427,10 @@ const Parser = struct {
         while (true) {
             switch (self.current()) {
                 .l_paren => {
-                    var params = std.ArrayList(Ast.Expression).init(self.allocator);
+                    var params = ALU(Ast.Expression){};
 
                     while (!self.atEof() and self.current() != .r_paren) {
-                        try params.append(try self.parseExpression());
+                        try params.append(self.allocator, try self.parseExpression());
                         if (self.current() == .r_paren) break;
                         self.expect(.comma);
                     }
@@ -442,7 +443,7 @@ const Parser = struct {
 
                     new_lhs = .{ .data = .{ .call = .{
                         .lhs = lhs_p,
-                        .params = try params.toOwnedSlice(),
+                        .params = try params.toOwnedSlice(self.allocator),
                     } }, .range = .{ .start = new_lhs.range.start, .end = end } };
                 },
                 else => break,

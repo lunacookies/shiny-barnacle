@@ -2,14 +2,14 @@ const std = @import("std");
 const indexer = @import("indexer.zig");
 const utils = @import("utils.zig");
 const Ast = @import("Ast.zig");
-const Allocator = std.mem.Allocator;
 const TextRange = @import("TextRange.zig");
+const Allocator = std.mem.Allocator;
+const ALU = std.ArrayListUnmanaged;
+const SAHMU = std.StringArrayHashMapUnmanaged;
+
 const Lir = @This();
 
-bodies: std.StringArrayHashMap(Body),
-
-const ALU = std.ArrayListUnmanaged;
-const SHMU = std.StringHashMapUnmanaged;
+bodies: SAHMU(Body),
 
 pub const Body = struct {
     instructions: ALU(Instruction),
@@ -100,7 +100,7 @@ pub const Type = union(enum) {
     u32,
     u64,
     u8,
-    pointer: *Type,
+    pointer: *const Type,
     void,
 
     pub fn size(self: Type) u32 {
@@ -191,7 +191,7 @@ pub fn analyze(
     a: Allocator,
 ) !Lir {
     var analyzer = Analyzer{
-        .lir = .{ .bodies = std.StringArrayHashMap(Body).init(a) },
+        .lir = .{ .bodies = SAHMU(Body){} },
         .file_index = file_index,
         .input = input,
     };
@@ -206,7 +206,8 @@ const Analyzer = struct {
     input: []const u8,
 
     fn analyze(self: *Analyzer, ast: Ast, a: Allocator) !void {
-        for (ast.items.items) |ast_item| {
+        try self.lir.bodies.ensureUnusedCapacity(a, ast.items.len);
+        for (ast.items) |ast_item| {
             try switch (ast_item.data) {
                 .function => |function| self.analyzeFunction(ast_item.name, function, a),
                 .strukt => {},
@@ -215,20 +216,21 @@ const Analyzer = struct {
     }
 
     fn analyzeFunction(self: *Analyzer, name: []const u8, function: Ast.Item.Function, a: Allocator) !void {
-        // The indexer has already handled raising an error about this.
         std.debug.assert(!self.lir.bodies.contains(name));
 
         var function_analyzer = FunctionAnalyzer.init(a, self.file_index, self.input);
         defer function_analyzer.deinint();
         try function_analyzer.analyzeFunction(function);
 
-        try self.lir.bodies.put(name, function_analyzer.body);
+        // The indexer has already handled raising an error about
+        // multiple items with the same name.
+        self.lir.bodies.putAssumeCapacityNoClobber(name, function_analyzer.body);
     }
 };
 
 const FunctionAnalyzer = struct {
     body: Body,
-    scopes: ALU(SHMU(ScopeEntry)),
+    scopes: ALU(SAHMU(ScopeEntry)),
     next_label_id: LabelId,
     should_emit: bool = true,
     file_index: indexer.FileIndex,
@@ -249,7 +251,7 @@ const FunctionAnalyzer = struct {
                 .params = undefined,
                 .return_type = undefined,
             },
-            .scopes = ALU(SHMU(ScopeEntry)){},
+            .scopes = ALU(SAHMU(ScopeEntry)){},
             .next_label_id = .{ .index = 0 },
             .file_index = file_index,
             .input = input,
@@ -745,7 +747,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn pushScope(self: *FunctionAnalyzer) !void {
-        const new_scope = SHMU(ScopeEntry){};
+        const new_scope = SAHMU(ScopeEntry){};
         try self.scopes.append(self.allocator, new_scope);
     }
 

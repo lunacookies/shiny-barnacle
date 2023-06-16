@@ -36,7 +36,7 @@ pub const Instruction = struct {
         laddr: u32,
         b: LabelId,
         cbz: LabelId,
-        call: LabelId,
+        call: []const u8,
         ret,
         ld,
         // push value then pointer
@@ -306,7 +306,7 @@ const FunctionAnalyzer = struct {
 
             .block => |block| {
                 try self.pushScope();
-                for (block.statements.items) |s| {
+                for (block.statements) |s| {
                     try self.analyzeStatement(s);
                 }
                 self.popScope();
@@ -445,6 +445,8 @@ const FunctionAnalyzer = struct {
                 expression.range,
                 expected_type_opt,
             ),
+
+            .call => |call| return self.analyzeCall(call, expression.range, expected_type_opt),
         }
     }
 
@@ -617,6 +619,19 @@ const FunctionAnalyzer = struct {
                 return self.makePointer(actual_type);
             },
         }
+    }
+
+    fn analyzeCall(
+        self: *FunctionAnalyzer,
+        call: Ast.Expression.Call,
+        range: TextRange,
+        expected_type_opt: ?Type,
+    ) !Type {
+        _ = expected_type_opt;
+        _ = range;
+        _ = call;
+        _ = self;
+        unreachable;
     }
 
     fn analyzeType(self: *FunctionAnalyzer, ty: Ast.Type) Type {
@@ -827,7 +842,7 @@ const PrettyPrintContext = struct {
             .laddr => |local_index| try self.writer.print("laddr\t{}", .{local_index}),
             .b => |label| try self.writer.print("b\tl{}", .{label.index}),
             .cbz => |label| try self.writer.print("cbz\tl{}", .{label.index}),
-            .call => |label| try self.writer.print("call\tl{}", .{label.index}),
+            .call => |func_name| try self.writer.print("call\tl{s}", .{func_name}),
             .or_ => try self.writer.writeAll("or"),
             .and_ => try self.writer.writeAll("and"),
             .cast => |ty| try self.writer.print("cast\t{}", .{ty}),

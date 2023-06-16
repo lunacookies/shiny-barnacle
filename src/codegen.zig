@@ -43,11 +43,11 @@ const param_registers = [_][]const u8{ "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 const CodegenContext = struct {
     assembly: *std.ArrayList(u8),
     source: []const u8,
-    body: *Lir.Body,
+    body: *const Lir.Body,
     function_name: []const u8,
     local_offsets: []const u32,
     stack_size: u32,
-    bodies: *std.StringArrayHashMap(Lir.Body),
+    bodies: *const std.StringArrayHashMap(Lir.Body),
     push_queued: bool = false,
 
     fn genFunction(self: *CodegenContext) !void {
@@ -143,11 +143,15 @@ const CodegenContext = struct {
 
             .cast => |src_ty| try self.genCast(src_ty, instruction.ty),
 
-            .call => |item_id| try self.genCall(item_id),
+            .call => |func_name| try self.genCall(func_name),
         }
     }
 
-    fn genCall(self: *@This(), item_id: )
+    fn genCall(self: *@This(), func_name: []const u8) !void {
+        _ = func_name;
+        _ = self;
+        unreachable;
+    }
 
     fn genCast(self: *@This(), src_type: Lir.IRType, dest_type: Lir.IRType) !void {
         try self.popRAX();

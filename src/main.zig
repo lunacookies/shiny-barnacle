@@ -75,8 +75,6 @@ pub fn main() !void {
 
 pub fn compile(allocator: std.mem.Allocator, in_buf: []const u8, debug: bool) ![]const u8 {
     var tokens = try lexer.lex(in_buf, allocator);
-    defer tokens.deinit(allocator);
-
     if (debug) {
         std.debug.print("\n== TOKENS ==\n\n", .{});
         for (tokens.items) |token| {
@@ -104,6 +102,7 @@ pub fn compile(allocator: std.mem.Allocator, in_buf: []const u8, debug: bool) ![
     var assembly = try codegen.codegen(in_buf, lir, allocator);
     if (debug)
         std.debug.print("\n== ASM ==\n\n{s}\n", .{assembly});
+
     return assembly;
 }
 

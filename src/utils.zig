@@ -1,11 +1,13 @@
 const std = @import("std");
 
 const LineCol = struct {
+    const Self = @This();
+
     line: u32,
     column: u32,
 
     pub fn format(
-        self: LineCol,
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
         writer: anytype,

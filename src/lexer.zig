@@ -10,11 +10,13 @@ pub fn lex(input: []const u8, allocator: Allocator) !ALU(Token) {
 }
 
 pub const Token = struct {
+    const Self = @This();
+
     kind: TokenKind,
     range: TextRange,
 
     pub fn format(
-        self: Token,
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
         writer: anytype,
@@ -26,6 +28,8 @@ pub const Token = struct {
 };
 
 pub const TokenKind = enum(u8) {
+    const Self = @This();
+
     func_kw,
     struct_kw,
     if_kw,
@@ -73,7 +77,7 @@ pub const TokenKind = enum(u8) {
     eof,
 
     pub fn format(
-        self: TokenKind,
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
         writer: anytype,
@@ -86,6 +90,8 @@ pub const TokenKind = enum(u8) {
 };
 
 const Lexer = struct {
+    const Self = @This();
+
     tokens: ALU(Token),
     allocator: Allocator,
     input: []const u8,
@@ -111,7 +117,7 @@ const Lexer = struct {
         };
     }
 
-    fn lex(self: *Lexer) !ALU(Token) {
+    fn lex(self: *Self) !ALU(Token) {
         while (!self.atEof()) {
             self.skipWhitespace();
 
@@ -194,7 +200,7 @@ const Lexer = struct {
         return self.tokens;
     }
 
-    fn skipWhitespace(self: *Lexer) void {
+    fn skipWhitespace(self: *Self) void {
         while (self.current() == ' ' or
             self.current() == '\t' or
             self.current() == '\n')
@@ -203,7 +209,7 @@ const Lexer = struct {
         }
     }
 
-    fn oneByteToken(self: *Lexer, kind: TokenKind) !void {
+    fn oneByteToken(self: *Self, kind: TokenKind) !void {
         try self.emit(kind, self.cursor, self.cursor + 1);
         self.cursor += 1;
     }
@@ -211,7 +217,7 @@ const Lexer = struct {
     const ByteAndKind = struct { byte: u8, kind: TokenKind };
 
     fn oneOrTwoByteToken(
-        self: *Lexer,
+        self: *Self,
         one_kind: TokenKind,
         two_byte_and_kinds: []const ByteAndKind,
     ) !void {
@@ -226,7 +232,7 @@ const Lexer = struct {
         try self.oneByteToken(one_kind);
     }
 
-    fn emit(self: *Lexer, kind: TokenKind, start: u32, end: u32) !void {
+    fn emit(self: *Self, kind: TokenKind, start: u32, end: u32) !void {
         var token = .{
             .kind = kind,
             .range = .{ .start = start, .end = end },
@@ -243,18 +249,18 @@ const Lexer = struct {
         try self.tokens.append(self.allocator, token);
     }
 
-    fn emitError(self: *const Lexer, c: u8) noreturn {
+    fn emitError(self: *const Self, c: u8) noreturn {
         const line_col = utils.indexToLineCol(self.input, self.cursor);
         std.debug.print("{}: error: invalid token (code: {})\n", .{ line_col, c });
         std.os.exit(92);
     }
 
-    fn current(self: *const Lexer) u8 {
+    fn current(self: *const Self) u8 {
         if (self.atEof()) return 0;
         return self.input[self.cursor];
     }
 
-    fn atEof(self: *const Lexer) bool {
+    fn atEof(self: *const Self) bool {
         return self.cursor >= self.input.len;
     }
 };

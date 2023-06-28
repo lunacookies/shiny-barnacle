@@ -41,10 +41,12 @@ pub fn indexFile(
 }
 
 pub const FileIndex = struct {
+    const Self = @This();
+
     items: SAHMU(Item),
 
     pub fn format(
-        self: FileIndex,
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
         writer: anytype,
@@ -117,18 +119,20 @@ fn lowerType(ty: Ast.Type) Type {
 const pretty_print_buf_size = 1024 * 1024;
 
 const PrettyPrintContext = struct {
+    const Self = @This();
+
     writer: std.BoundedArray(u8, pretty_print_buf_size).Writer,
 
     const Error = error{Overflow};
 
-    fn printFileIndex(self: *PrettyPrintContext, file_index: FileIndex) Error!void {
+    fn printFileIndex(self: *Self, file_index: FileIndex) Error!void {
         for (file_index.items.keys(), file_index.items.values(), 0..) |name, item, i| {
             if (i != 0) try self.writer.writeAll("\n");
             try self.printItem(name, item);
         }
     }
 
-    fn printItem(self: *PrettyPrintContext, name: []const u8, item: Item) Error!void {
+    fn printItem(self: *Self, name: []const u8, item: Item) Error!void {
         try switch (item.data) {
             .function => |function| self.printFunction(name, function),
             .strukt => |strukt| self.printStrukt(name, strukt),
@@ -136,7 +140,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printFunction(
-        self: *PrettyPrintContext,
+        self: *Self,
         name: []const u8,
         function: Item.Function,
     ) Error!void {
@@ -145,7 +149,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printStrukt(
-        self: *PrettyPrintContext,
+        self: *Self,
         name: []const u8,
         strukt: Item.Struct,
     ) Error!void {
@@ -158,7 +162,7 @@ const PrettyPrintContext = struct {
         try self.writer.writeAll("\n}");
     }
 
-    fn printType(self: *PrettyPrintContext, ty: Type) Error!void {
+    fn printType(self: *Self, ty: Type) Error!void {
         try self.writer.writeAll(ty.name);
     }
 };

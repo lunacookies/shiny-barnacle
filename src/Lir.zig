@@ -24,6 +24,8 @@ pub const Body = struct {
 pub const IRType = Type;
 
 pub const Instruction = struct {
+    const Self = @This();
+
     data: Data,
     /// The type associated with an instruction, in most cases this is the return type
     /// If the instruction doesn't have an associated type then this value is undefined
@@ -64,7 +66,7 @@ pub const Instruction = struct {
     };
 
     pub fn format(
-        self: @This(),
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
         writer: anytype,
@@ -95,6 +97,8 @@ pub const Label = struct {
 };
 
 pub const Type = union(enum) {
+    const Self = @This();
+
     i32,
     i64,
     u32,
@@ -103,7 +107,7 @@ pub const Type = union(enum) {
     pointer: *const Type,
     void,
 
-    pub fn size(self: Type) u32 {
+    pub fn size(self: Self) u32 {
         return switch (self) {
             .i32, .u32 => 4,
             .i64, .u64 => 8,
@@ -113,11 +117,11 @@ pub const Type = union(enum) {
         };
     }
 
-    pub fn alignment(self: Type) u32 {
+    pub fn alignment(self: Self) u32 {
         return self.size();
     }
 
-    pub fn isSigned(self: Type) bool {
+    pub fn isSigned(self: Self) bool {
         switch (self) {
             .i32, .i64 => return true,
             .u32, .u64, .u8 => return false,
@@ -125,7 +129,7 @@ pub const Type = union(enum) {
         }
     }
 
-    pub fn isNumeric(self: Type) bool {
+    pub fn isNumeric(self: Self) bool {
         return switch (self) {
             .u32, .u64, .i32, .i64, .u8 => true,
             .void, .pointer => false,
@@ -163,7 +167,7 @@ pub const Type = union(enum) {
     }
 
     pub fn format(
-        self: Type,
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
         writer: anytype,
@@ -201,11 +205,13 @@ pub fn analyze(
 }
 
 const Analyzer = struct {
+    const Self = @This();
+
     lir: Lir,
     file_index: indexer.FileIndex,
     input: []const u8,
 
-    fn analyze(self: *Analyzer, ast: Ast, a: Allocator) !void {
+    fn analyze(self: *Self, ast: Ast, a: Allocator) !void {
         try self.lir.bodies.ensureUnusedCapacity(a, ast.items.len);
         for (ast.items) |ast_item| {
             try switch (ast_item.data) {
@@ -215,7 +221,7 @@ const Analyzer = struct {
         }
     }
 
-    fn analyzeFunction(self: *Analyzer, name: []const u8, function: Ast.Item.Function, a: Allocator) !void {
+    fn analyzeFunction(self: *Self, name: []const u8, function: Ast.Item.Function, a: Allocator) !void {
         std.debug.assert(!self.lir.bodies.contains(name));
 
         var function_analyzer = FunctionAnalyzer.init(a, self.file_index, self.input);
@@ -229,6 +235,8 @@ const Analyzer = struct {
 };
 
 const FunctionAnalyzer = struct {
+    const Self = @This();
+
     body: Body,
     scopes: ALU(SAHMU(ScopeEntry)),
     next_label_id: LabelId,
@@ -260,7 +268,7 @@ const FunctionAnalyzer = struct {
     }
 
     /// Will not free the `body`
-    pub fn deinint(self: *@This()) void {
+    pub fn deinint(self: *Self) void {
         for (self.scopes.items) |*scope| {
             scope.deinit(self.allocator);
         }
@@ -268,7 +276,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeFunction(
-        self: *FunctionAnalyzer,
+        self: *Self,
         function: Ast.Item.Function,
     ) !void {
         try self.pushScope();
@@ -289,7 +297,7 @@ const FunctionAnalyzer = struct {
         self.popScope();
     }
 
-    fn analyzeStatement(self: *FunctionAnalyzer, statement: Ast.Statement) !void {
+    fn analyzeStatement(self: *Self, statement: Ast.Statement) !void {
         switch (statement.data) {
             .local_declaration => |ld| return self.analyzeLocalDeclaration(
                 ld,
@@ -322,7 +330,7 @@ const FunctionAnalyzer = struct {
         }
     }
     fn analyzeAssign(
-        self: *FunctionAnalyzer,
+        self: *Self,
         assign: Ast.Statement.Assign,
         range: TextRange,
     ) !void {
@@ -333,7 +341,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeLocalDeclaration(
-        self: *FunctionAnalyzer,
+        self: *Self,
         local_declaration: Ast.Statement.LocalDeclaration,
         range: TextRange,
     ) !void {
@@ -358,7 +366,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeIf(
-        self: *FunctionAnalyzer,
+        self: *Self,
         if_: Ast.Statement.If,
         range: TextRange,
     ) !void {
@@ -394,7 +402,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeWhile(
-        self: *FunctionAnalyzer,
+        self: *Self,
         while_: Ast.Statement.While,
         range: TextRange,
     ) !void {
@@ -419,7 +427,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeExpression(
-        self: *FunctionAnalyzer,
+        self: *Self,
         expression: Ast.Expression,
         expected_type_opt: ?Type,
     ) !Type {
@@ -453,7 +461,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeAddressOfExpression(
-        self: *FunctionAnalyzer,
+        self: *Self,
         expression: Ast.Expression,
         expected_type_opt: ?Type,
     ) !Type {
@@ -468,7 +476,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeInteger(
-        self: *FunctionAnalyzer,
+        self: *Self,
         integer_str: []const u8,
         range: TextRange,
         expected_type_opt: ?Type,
@@ -490,7 +498,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeName(
-        self: *FunctionAnalyzer,
+        self: *Self,
         name: []const u8,
         range: TextRange,
         expected_type_opt: ?Type,
@@ -506,7 +514,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeAddressOfName(
-        self: *FunctionAnalyzer,
+        self: *Self,
         name: []const u8,
         range: TextRange,
         expected_type_opt: ?Type,
@@ -524,14 +532,14 @@ const FunctionAnalyzer = struct {
         return scope_entry.ty;
     }
 
-    fn makePointer(self: *FunctionAnalyzer, ty: Type) !Type {
+    fn makePointer(self: *Self, ty: Type) !Type {
         var child_type = try self.allocator.create(Type);
         child_type.* = ty;
         return Type{ .pointer = child_type };
     }
 
     fn analyzeBinary(
-        self: *FunctionAnalyzer,
+        self: *Self,
         binary: Ast.Expression.Binary,
         range: TextRange,
         expected_type_opt: ?Type,
@@ -571,7 +579,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeUnary(
-        self: *FunctionAnalyzer,
+        self: *Self,
         unary: Ast.Expression.Unary,
         range: TextRange,
         expected_type_opt: ?Type,
@@ -624,7 +632,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn analyzeCall(
-        self: *FunctionAnalyzer,
+        self: *Self,
         call: Ast.Expression.Call,
         range: TextRange,
         expected_type_opt: ?Type,
@@ -636,7 +644,7 @@ const FunctionAnalyzer = struct {
         unreachable;
     }
 
-    fn analyzeType(self: *FunctionAnalyzer, ty: Ast.Type) Type {
+    fn analyzeType(self: *Self, ty: Ast.Type) Type {
         if (std.mem.eql(u8, ty.name, "i32")) return .i32;
         if (std.mem.eql(u8, ty.name, "i64")) return .i64;
         if (std.mem.eql(u8, ty.name, "u32")) return .u32;
@@ -647,7 +655,7 @@ const FunctionAnalyzer = struct {
     }
 
     fn createLocal(
-        self: *FunctionAnalyzer,
+        self: *Self,
         name: []const u8,
         ty: Type,
     ) !u32 {
@@ -661,7 +669,7 @@ const FunctionAnalyzer = struct {
         return i;
     }
 
-    fn lookupLocal(self: *@This(), name: []const u8, range: TextRange) *ScopeEntry {
+    fn lookupLocal(self: *Self, name: []const u8, range: TextRange) *ScopeEntry {
         // There is always at least one scope.
         std.debug.assert(self.scopes.items.len >= 1);
 
@@ -678,7 +686,7 @@ const FunctionAnalyzer = struct {
         self.emitError(range, "undeclared variable “{s}”\n", .{name});
     }
 
-    fn ensureTypeNumeric(self: *@This(), ty: Type, range: TextRange) void {
+    fn ensureTypeNumeric(self: *Self, ty: Type, range: TextRange) void {
         if (ty.isNumeric()) return;
 
         self.emitError(
@@ -702,7 +710,7 @@ const FunctionAnalyzer = struct {
         std.os.exit(92);
     }
 
-    fn allocateLabel(self: *FunctionAnalyzer) !LabelId {
+    fn allocateLabel(self: *Self) !LabelId {
         const id = self.next_label_id;
         self.next_label_id.index += 1;
         try self.body.labels.append(self.allocator, .{
@@ -711,13 +719,13 @@ const FunctionAnalyzer = struct {
         return id;
     }
 
-    fn moveLabelToCurrent(self: *FunctionAnalyzer, label_id: LabelId) void {
+    fn moveLabelToCurrent(self: *Self, label_id: LabelId) void {
         const label = &self.body.labels.items[label_id.index];
         label.instruction_index = @intCast(u32, self.body.instructions.items.len);
     }
 
     fn pushInstruction(
-        self: *FunctionAnalyzer,
+        self: *Self,
         data: Instruction.Data,
         ty: IRType,
         range: TextRange,
@@ -732,7 +740,7 @@ const FunctionAnalyzer = struct {
         try self.body.instructions.append(self.allocator, instruction);
     }
 
-    fn checkAndCast(self: *@This(), src: Type, dest: ?Type, range: TextRange) !Type {
+    fn checkAndCast(self: *Self, src: Type, dest: ?Type, range: TextRange) !Type {
         const d = dest orelse return src;
         if (src.isEqual(d)) return d;
         if (src.isSubtype(d)) {
@@ -746,12 +754,12 @@ const FunctionAnalyzer = struct {
         self.emitError(range, "expected type “{}” but found “{}”\n", .{ d, src });
     }
 
-    fn pushScope(self: *FunctionAnalyzer) !void {
+    fn pushScope(self: *Self) !void {
         const new_scope = SAHMU(ScopeEntry){};
         try self.scopes.append(self.allocator, new_scope);
     }
 
-    fn popScope(self: *FunctionAnalyzer) void {
+    fn popScope(self: *Self) void {
         _ = self.scopes.pop();
     }
 
@@ -787,12 +795,14 @@ pub fn format(
 const pretty_print_buf_size = 1024 * 1024;
 
 const PrettyPrintContext = struct {
+    const Self = @This();
+
     indentation: usize,
     writer: std.BoundedArray(u8, pretty_print_buf_size).Writer,
 
     const Error = error{Overflow};
 
-    fn printLir(self: *PrettyPrintContext, lir: Lir) Error!void {
+    fn printLir(self: *Self, lir: Lir) Error!void {
         for (lir.bodies.keys(), lir.bodies.values(), 0..) |name, body, i| {
             if (i != 0) try self.writer.writeAll("\n\n");
             try self.printBody(name, body);
@@ -800,7 +810,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printBody(
-        self: *PrettyPrintContext,
+        self: *Self,
         name: []const u8,
         body: Body,
     ) Error!void {
@@ -835,7 +845,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printInstruction(
-        self: *PrettyPrintContext,
+        self: *Self,
         instruction: Instruction,
     ) Error!void {
         try self.writer.print("{}\t", .{instruction.ty});
@@ -852,7 +862,7 @@ const PrettyPrintContext = struct {
         }
     }
 
-    fn newline(self: *PrettyPrintContext) Error!void {
+    fn newline(self: *Self) Error!void {
         try self.writer.writeByte('\n');
         try self.writer.writeByteNTimes('\t', self.indentation);
     }

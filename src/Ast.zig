@@ -160,19 +160,21 @@ pub fn format(
 const pretty_print_buf_size = 1024 * 1024;
 
 const PrettyPrintContext = struct {
+    const Self = @This();
+
     indentation: usize,
     writer: std.BoundedArray(u8, pretty_print_buf_size).Writer,
 
     const Error = error{Overflow};
 
-    fn printAst(self: *PrettyPrintContext, ast: Ast) Error!void {
+    fn printAst(self: *Self, ast: Ast) Error!void {
         for (ast.items, 0..) |item, i| {
             if (i != 0) try self.writer.writeAll("\n\n");
             try self.printItem(item);
         }
     }
 
-    fn printItem(self: *PrettyPrintContext, item: Ast.Item) Error!void {
+    fn printItem(self: *Self, item: Ast.Item) Error!void {
         try switch (item.data) {
             .function => |function| self.printFunction(item.name, function),
             .strukt => |strukt| self.printStruct(item.name, strukt),
@@ -180,7 +182,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printFunction(
-        self: *PrettyPrintContext,
+        self: *Self,
         name: []const u8,
         function: Ast.Item.Function,
     ) Error!void {
@@ -189,7 +191,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printStruct(
-        self: *PrettyPrintContext,
+        self: *Self,
         name: []const u8,
         strukt: Ast.Item.Struct,
     ) Error!void {
@@ -202,11 +204,11 @@ const PrettyPrintContext = struct {
         try self.writer.writeAll("\n}");
     }
 
-    fn printType(self: *PrettyPrintContext, ty: Ast.Type) Error!void {
+    fn printType(self: *Self, ty: Ast.Type) Error!void {
         try self.writer.writeAll(ty.name);
     }
 
-    fn printStatement(self: *PrettyPrintContext, statement: Ast.Statement) Error!void {
+    fn printStatement(self: *Self, statement: Ast.Statement) Error!void {
         try switch (statement.data) {
             .local_declaration => |ld| self.printLocalDeclaration(ld),
             .return_ => |return_| self.printReturn(return_),
@@ -219,7 +221,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printLocalDeclaration(
-        self: *PrettyPrintContext,
+        self: *Self,
         local_declaration: Ast.Statement.LocalDeclaration,
     ) Error!void {
         try self.writer.print("let {s} ", .{local_declaration.name});
@@ -231,7 +233,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printAssign(
-        self: *PrettyPrintContext,
+        self: *Self,
         assign: Ast.Statement.Assign,
     ) Error!void {
         try self.printExpression(assign.lhs);
@@ -240,7 +242,7 @@ const PrettyPrintContext = struct {
     }
 
     fn printReturn(
-        self: *PrettyPrintContext,
+        self: *Self,
         return_: Ast.Statement.Return,
     ) Error!void {
         try self.writer.writeAll("return ");
@@ -248,7 +250,7 @@ const PrettyPrintContext = struct {
             try self.printExpression(val);
     }
 
-    fn printIf(self: *PrettyPrintContext, if_: Ast.Statement.If) Error!void {
+    fn printIf(self: *Self, if_: Ast.Statement.If) Error!void {
         try self.writer.writeAll("if ");
         try self.printExpression(if_.condition);
         try self.writer.writeAll(" ");
@@ -259,14 +261,14 @@ const PrettyPrintContext = struct {
         }
     }
 
-    fn printWhile(self: *PrettyPrintContext, while_: Ast.Statement.While) Error!void {
+    fn printWhile(self: *Self, while_: Ast.Statement.While) Error!void {
         try self.writer.writeAll("while ");
         try self.printExpression(while_.condition);
         try self.writer.writeAll(" ");
         try self.printStatement(while_.body.*);
     }
 
-    fn printBlock(self: *PrettyPrintContext, block: Ast.Statement.Block) Error!void {
+    fn printBlock(self: *Self, block: Ast.Statement.Block) Error!void {
         if (block.statements.len == 0) {
             try self.writer.writeAll("{}");
             return;
@@ -283,7 +285,7 @@ const PrettyPrintContext = struct {
         try self.writer.writeByte('}');
     }
 
-    fn printExpression(self: *PrettyPrintContext, expression: Ast.Expression) Error!void {
+    fn printExpression(self: *Self, expression: Ast.Expression) Error!void {
         try switch (expression.data) {
             .integer => |integer| self.writer.writeAll(integer),
             .name => |name| self.writer.writeAll(name),
@@ -340,11 +342,11 @@ const PrettyPrintContext = struct {
         };
     }
 
-    fn printInteger(self: *PrettyPrintContext, integer: u32) Error!void {
+    fn printInteger(self: *Self, integer: u32) Error!void {
         try self.writer.print("{}", .{integer});
     }
 
-    fn newline(self: *PrettyPrintContext) Error!void {
+    fn newline(self: *Self) Error!void {
         try self.writer.writeByte('\n');
         try self.writer.writeByteNTimes('\t', self.indentation);
     }

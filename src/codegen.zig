@@ -44,6 +44,8 @@ pub fn codegen(source: []const u8, lir: Lir, a: Allocator) ![]const u8 {
 const param_registers = [_][]const u8{ "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
 const CodegenContext = struct {
+    const Self = @This();
+
     assembly: *ALU(u8),
     allocator: Allocator,
     source: []const u8,
@@ -54,7 +56,7 @@ const CodegenContext = struct {
     bodies: *const SAHMU(Lir.Body),
     push_queued: bool = false,
 
-    fn genFunction(self: *CodegenContext) !void {
+    fn genFunction(self: *Self) !void {
         switch (builtin.os.tag) {
             .macos => {
                 try self.print(".global _{s}\n", .{self.function_name});
@@ -97,7 +99,7 @@ const CodegenContext = struct {
         try self.print("\tret\n", .{});
     }
 
-    fn genInstruction(self: *CodegenContext, instruction: Lir.Instruction) !void {
+    fn genInstruction(self: *Self, instruction: Lir.Instruction) !void {
         const writer = try self.assemblyWriter();
         try writer.print("\t# {}\n", .{instruction});
 
@@ -153,13 +155,13 @@ const CodegenContext = struct {
         }
     }
 
-    fn genCall(self: *@This(), func_name: []const u8) !void {
+    fn genCall(self: *Self, func_name: []const u8) !void {
         _ = func_name;
         _ = self;
         unreachable;
     }
 
-    fn genCast(self: *@This(), src_type: Lir.IRType, dest_type: Lir.IRType) !void {
+    fn genCast(self: *Self, src_type: Lir.IRType, dest_type: Lir.IRType) !void {
         try self.popRAX();
         if (src_type.isSigned()) {
             try self.print("\tmovsx\t{s}, {s}\n", .{ getSizedRax(dest_type), getSizedRax(src_type) });
@@ -169,7 +171,7 @@ const CodegenContext = struct {
         try self.push();
     }
 
-    fn genBinary(self: *CodegenContext, instruction: Lir.Instruction) !void {
+    fn genBinary(self: *Self, instruction: Lir.Instruction) !void {
         try self.pop("rdi"); // rhs
         try self.popRAX(); // lhs
 
@@ -248,13 +250,13 @@ const CodegenContext = struct {
         try self.push();
     }
 
-    fn load(self: *CodegenContext, ty: Lir.Type) !void {
+    fn load(self: *Self, ty: Lir.Type) !void {
         try self.popRAX();
         try self.print("\tmov\t{s}, [rax]\n", .{getSizedRax(ty)});
         try self.push();
     }
 
-    fn store_pv(self: *CodegenContext, ty: Lir.Type) !void {
+    fn store_pv(self: *Self, ty: Lir.Type) !void {
         const value_reg = getSizedRdi(ty);
         // try self.pop(value_reg); // pop value to store
         try self.pop("rdi"); // pop value to store
@@ -262,7 +264,7 @@ const CodegenContext = struct {
         try self.print("\tmov\t[rax], {s}\n", .{value_reg});
     }
 
-    fn store_vp(self: *CodegenContext, ty: Lir.Type) !void {
+    fn store_vp(self: *Self, ty: Lir.Type) !void {
         try self.popRAX(); // pop destination address
         try self.pop("rdi"); // pop value to store
         const value_reg = getSizedRdi(ty);
@@ -290,18 +292,18 @@ const CodegenContext = struct {
         };
     }
 
-    fn genLocalAddress(self: *CodegenContext, local_index: u32) !void {
+    fn genLocalAddress(self: *Self, local_index: u32) !void {
         const offset = self.local_offsets[local_index];
         try self.print("\tlea\trax, [rbp - {}]\n", .{offset});
         try self.push();
     }
 
-    fn push(self: *CodegenContext) !void {
+    fn push(self: *Self) !void {
         std.debug.assert(!self.push_queued);
         self.push_queued = true;
     }
 
-    fn popRAX(self: *CodegenContext) !void {
+    fn popRAX(self: *Self) !void {
         if (self.push_queued) {
             self.push_queued = false;
             return;
@@ -309,7 +311,7 @@ const CodegenContext = struct {
         try self.print("\tpop\trax\n", .{});
     }
 
-    fn pop(self: *CodegenContext, register: []const u8) !void {
+    fn pop(self: *Self, register: []const u8) !void {
         if (self.push_queued) {
             self.push_queued = false;
             // try self.assembly.writer().writeAll("\tpush\trax\n");
@@ -320,7 +322,7 @@ const CodegenContext = struct {
     }
 
     fn print(
-        self: *CodegenContext,
+        self: *Self,
         comptime fmt: []const u8,
         args: anytype,
     ) !void {
@@ -332,7 +334,7 @@ const CodegenContext = struct {
         try writer.print(fmt, args);
     }
 
-    fn assemblyWriter(self: *CodegenContext) !ALU(u8).Writer {
+    fn assemblyWriter(self: *Self) !ALU(u8).Writer {
         return self.assembly.writer(self.allocator);
     }
 };

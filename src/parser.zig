@@ -20,6 +20,8 @@ const expression_first_set = std.EnumSet(lexer.TokenKind)
 });
 
 const Parser = struct {
+    const Self = @This();
+
     input: []const u8,
     tokens: []const lexer.Token,
     cursor: usize,
@@ -31,7 +33,7 @@ const Parser = struct {
         return .{ .input = input, .tokens = tokens, .cursor = 0, .allocator = allocator };
     }
 
-    fn parse(self: *Parser) !Ast {
+    fn parse(self: *Self) !Ast {
         var items = ALU(Ast.Item){};
 
         while (!self.atEof()) {
@@ -42,7 +44,7 @@ const Parser = struct {
         return .{ .items = items.items };
     }
 
-    fn parseItem(self: *Parser) ParseError!Ast.Item {
+    fn parseItem(self: *Self) ParseError!Ast.Item {
         switch (self.current()) {
             .func_kw => return self.parseFunction(),
             .struct_kw => return self.parseStruct(),
@@ -50,7 +52,7 @@ const Parser = struct {
         }
     }
 
-    fn parseFunction(self: *Parser) ParseError!Ast.Item {
+    fn parseFunction(self: *Self) ParseError!Ast.Item {
         const start = self.inputIndex();
 
         self.bump(.func_kw);
@@ -96,7 +98,7 @@ const Parser = struct {
         };
     }
 
-    fn parseStruct(self: *Parser) !Ast.Item {
+    fn parseStruct(self: *Self) !Ast.Item {
         const start = self.inputIndex();
         self.bump(.struct_kw);
         const name = self.expectWithText(.identifier);
@@ -133,7 +135,7 @@ const Parser = struct {
         };
     }
 
-    fn parseType(self: *Parser) Ast.Type {
+    fn parseType(self: *Self) Ast.Type {
         switch (self.current()) {
             .identifier => {
                 const start = self.inputIndex();
@@ -148,7 +150,7 @@ const Parser = struct {
         }
     }
 
-    fn parseStatement(self: *Parser) Allocator.Error!Ast.Statement {
+    fn parseStatement(self: *Self) Allocator.Error!Ast.Statement {
         while (self.current() == .semicolon) self.bump(.semicolon);
         return switch (self.current()) {
             .let_kw => self.parseLocalDeclaration(),
@@ -160,7 +162,7 @@ const Parser = struct {
         };
     }
 
-    fn parseAssignOrExprStmt(self: *Parser) !Ast.Statement {
+    fn parseAssignOrExprStmt(self: *Self) !Ast.Statement {
         const start = self.inputIndex();
         const lhs = try self.parseExpression();
         if (self.current() == .equals) {
@@ -185,7 +187,7 @@ const Parser = struct {
         }
     }
 
-    fn parseLocalDeclaration(self: *Parser) !Ast.Statement {
+    fn parseLocalDeclaration(self: *Self) !Ast.Statement {
         const start = self.inputIndex();
 
         self.bump(.let_kw);
@@ -212,7 +214,7 @@ const Parser = struct {
         };
     }
 
-    fn parseReturn(self: *Parser) !Ast.Statement {
+    fn parseReturn(self: *Self) !Ast.Statement {
         const start = self.inputIndex();
         self.bump(.return_kw);
 
@@ -230,7 +232,7 @@ const Parser = struct {
         };
     }
 
-    fn parseIf(self: *Parser) !Ast.Statement {
+    fn parseIf(self: *Self) !Ast.Statement {
         const start = self.inputIndex();
         self.bump(.if_kw);
 
@@ -261,7 +263,7 @@ const Parser = struct {
         };
     }
 
-    fn parseWhile(self: *Parser) !Ast.Statement {
+    fn parseWhile(self: *Self) !Ast.Statement {
         const start = self.inputIndex();
         self.bump(.while_kw);
 
@@ -283,7 +285,7 @@ const Parser = struct {
         };
     }
 
-    fn parseBlock(self: *Parser) !Ast.Statement {
+    fn parseBlock(self: *Self) !Ast.Statement {
         const start = self.inputIndex();
 
         self.expect(.l_brace);
@@ -302,12 +304,12 @@ const Parser = struct {
         };
     }
 
-    fn parseExpression(self: *Parser) ParseError!Ast.Expression {
+    fn parseExpression(self: *Self) ParseError!Ast.Expression {
         return self.parseExpressionWithBindingPower(0);
     }
 
     fn parseExpressionWithBindingPower(
-        self: *Parser,
+        self: *Self,
         min_binding_power: u8,
     ) !Ast.Expression {
         const OpBindingPower = struct {
@@ -422,7 +424,7 @@ const Parser = struct {
         return lhs;
     }
 
-    fn parsePostfix(self: *Parser, lhs: Ast.Expression) !Ast.Expression {
+    fn parsePostfix(self: *Self, lhs: Ast.Expression) !Ast.Expression {
         var new_lhs = lhs;
         while (true) {
             switch (self.current()) {
@@ -452,7 +454,7 @@ const Parser = struct {
         return new_lhs;
     }
 
-    fn parseLhs(self: *Parser) !Ast.Expression {
+    fn parseLhs(self: *Self) !Ast.Expression {
         std.debug.assert(expression_first_set.contains(self.current()));
         var lhs: Ast.Expression = undefined;
         switch (self.current()) {
@@ -512,11 +514,11 @@ const Parser = struct {
         return self.parsePostfix(lhs);
     }
 
-    fn expect(self: *Parser, kind: lexer.TokenKind) void {
+    fn expect(self: *Self, kind: lexer.TokenKind) void {
         _ = self.expectWithText(kind);
     }
 
-    fn expectWithText(self: *Parser, kind: lexer.TokenKind) []const u8 {
+    fn expectWithText(self: *Self, kind: lexer.TokenKind) []const u8 {
         if (self.current() != kind) {
             self.emitError("expected {} but found {}", .{ kind, self.current() });
         }
@@ -524,7 +526,7 @@ const Parser = struct {
         return self.bumpWithText(kind);
     }
 
-    fn emitError(self: *const Parser, comptime fmt: []const u8, args: anytype) noreturn {
+    fn emitError(self: *const Self, comptime fmt: []const u8, args: anytype) noreturn {
         const line_col = utils.indexToLineCol(self.input, self.inputIndex());
 
         std.debug.print("{}: error: ", .{line_col});
@@ -533,7 +535,7 @@ const Parser = struct {
         std.os.exit(92);
     }
 
-    fn inputIndex(self: *const Parser) u32 {
+    fn inputIndex(self: *const Self) u32 {
         if (self.atEof()) {
             return self.tokens[self.tokens.len - 1].range.end;
         } else {
@@ -541,37 +543,37 @@ const Parser = struct {
         }
     }
 
-    fn bump(self: *Parser, kind: lexer.TokenKind) void {
+    fn bump(self: *Self, kind: lexer.TokenKind) void {
         _ = self.bumpWithText(kind);
     }
 
-    fn bumpWithText(self: *Parser, kind: lexer.TokenKind) []const u8 {
+    fn bumpWithText(self: *Self, kind: lexer.TokenKind) []const u8 {
         std.debug.assert(self.current() == kind);
         return self.bumpAnyWithText();
     }
 
-    fn bumpAny(self: *Parser) void {
+    fn bumpAny(self: *Self) void {
         _ = self.bumpAnyWithText();
     }
 
-    fn bumpAnyWithText(self: *Parser) []const u8 {
+    fn bumpAnyWithText(self: *Self) []const u8 {
         const range = self.tokens[self.cursor].range;
         const text = self.input[range.start..range.end];
         self.cursor += 1;
         return text;
     }
 
-    fn current(self: *const Parser) lexer.TokenKind {
+    fn current(self: *const Self) lexer.TokenKind {
         if (self.atEof()) return .eof;
         return self.tokens[self.cursor].kind;
     }
 
-    fn lookahead(self: *const Parser) lexer.TokenKind {
+    fn lookahead(self: *const Self) lexer.TokenKind {
         if (self.cursor + 1 >= self.tokens.len) return .eof;
         return self.tokens[self.cursor + 1].kind;
     }
 
-    fn atEof(self: *const Parser) bool {
+    fn atEof(self: *const Self) bool {
         return self.cursor >= self.tokens.len;
     }
 };

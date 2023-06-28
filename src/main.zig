@@ -53,7 +53,7 @@ pub fn main() !void {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
 
-        var assembly = try compile(arena.allocator(), source, true);
+        const assembly = try compile(arena.allocator(), source, true);
         try assemble(allocator, assembly, "out.s", "out", target);
     } else {
         while (true) {
@@ -65,7 +65,7 @@ pub fn main() !void {
             var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
-            var assembly = try compile(arena.allocator(), input_string, true);
+            const assembly = try compile(arena.allocator(), input_string, true);
             try assemble(allocator, assembly, "out.s", "out", target);
             var out_proc = std.ChildProcess.init(&[_][]const u8{"./out"}, allocator);
             _ = try out_proc.spawnAndWait();
@@ -74,7 +74,7 @@ pub fn main() !void {
 }
 
 pub fn compile(allocator: std.mem.Allocator, in_buf: []const u8, debug: bool) ![]const u8 {
-    var tokens = try lexer.lex(in_buf, allocator);
+    const tokens = try lexer.lex(in_buf, allocator);
     if (debug) {
         std.debug.print("\n== TOKENS ==\n\n", .{});
         for (tokens.items) |token| {
@@ -82,15 +82,15 @@ pub fn compile(allocator: std.mem.Allocator, in_buf: []const u8, debug: bool) ![
         }
     }
 
-    var ast = try parser.parse(in_buf, tokens.items, allocator);
+    const ast = try parser.parse(in_buf, tokens.items, allocator);
     if (debug)
         std.debug.print("\n== AST ==\n\n{}\n", .{ast});
 
-    var file_index = try indexer.indexFile(in_buf, ast, allocator);
+    const file_index = try indexer.indexFile(in_buf, ast, allocator);
     if (debug)
         std.debug.print("\n== INDEX ==\n\n{}\n", .{file_index});
 
-    var lir = try Lir.analyze(
+    const lir = try Lir.analyze(
         in_buf,
         file_index,
         ast,
@@ -99,7 +99,7 @@ pub fn compile(allocator: std.mem.Allocator, in_buf: []const u8, debug: bool) ![
     if (debug)
         std.debug.print("\n== LIR ==\n\n{}\n", .{lir});
 
-    var assembly = try codegen.codegen(in_buf, lir, allocator);
+    const assembly = try codegen.codegen(in_buf, lir, allocator);
     if (debug)
         std.debug.print("\n== ASM ==\n\n{s}\n", .{assembly});
 
